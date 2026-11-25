@@ -432,10 +432,10 @@
       <div class="layout">
         <div class="main-col">
           <div class="tabs" role="tablist" aria-label="校园地点">
-            <button class="tab" role="tab" data-room="classroom" aria-selected="true"><span class="t-name">教室</span><span class="t-count" data-count="classroom">0 位同学</span></button>
-            <button class="tab" role="tab" data-room="playground" aria-selected="false"><span class="t-name">操场</span><span class="t-count" data-count="playground">0 位同学</span></button>
-            <button class="tab" role="tab" data-room="cafeteria" aria-selected="false"><span class="t-name">食堂</span><span class="t-count" data-count="cafeteria">0 位同学</span></button>
-            <button class="tab" role="tab" data-room="garden" aria-selected="false"><span class="t-name">花园</span><span class="t-count" data-count="garden">0 位同学</span></button>
+            <button class="tab" role="tab" data-room="classroom" aria-selected="true" title="点一下传送到教室"><span class="t-name">教室</span><span class="t-count" data-count="classroom">0 位同学</span></button>
+            <button class="tab" role="tab" data-room="playground" aria-selected="false" title="点一下传送到操场"><span class="t-name">操场</span><span class="t-count" data-count="playground">0 位同学</span></button>
+            <button class="tab" role="tab" data-room="cafeteria" aria-selected="false" title="点一下传送到食堂"><span class="t-name">食堂</span><span class="t-count" data-count="cafeteria">0 位同学</span></button>
+            <button class="tab" role="tab" data-room="garden" aria-selected="false" title="点一下传送到花园"><span class="t-name">花园</span><span class="t-count" data-count="garden">0 位同学</span></button>
           </div>
 
 <div class="scene" id="scene">
@@ -443,7 +443,7 @@
             <div id="labels"></div>
             <div class="scene-tip" id="sceneTip">3D 校园正在搭建…</div>
             <div id="joy" aria-hidden="true"><div id="joyKnob"></div></div>
-            <div class="move-hint">WASD / 方向键走路 · Shift 跑起来</div>
+            <div class="move-hint">WASD / 方向键走路 · Shift 跑起来 · 走出教室门就能到操场</div>
           </div>
 
                     <div class="actions" id="actions"></div>
@@ -6565,8 +6565,8 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
           name:name, species:species,
           coat: pick(COATS).id, pattern: pick(PATTERNS),
           room: pick(ROOM_KEYS), action: "", state:"idle",
-          x: rand(10,90), y: rand(58,90), dir: 1,
-          el:null, bubbleTimer:null, isMe:false
+          x: rand(10,90), y: rand(58,90), dir: 1, face: Math.PI / 2,
+          el:null, bubbleTimer:null, isMe:false, trip:null
         };
       }
       (function seed(){
@@ -6589,9 +6589,8 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
 
       /* ---------------- 我 ---------------- */
       var me = { name:"", species:"cat", coat:"orange", pattern:"plain", room:"classroom",
-                 x:50, y:74, dir:1, el:null, bubbleTimer:null, state:"idle", action:"刚入学", isMe:true };
+                 x:80, y:75, dir:1, face:Math.PI/2, el:null, bubbleTimer:null, state:"idle", action:"刚入学", isMe:true };
       var treats = 0;
-      var currentRoom = "classroom";
       var entered = false;
 
       /* ---------------- 入学表单 ---------------- */
@@ -6653,8 +6652,13 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
       /* ---------------- 3D 校园（Three.js） ---------------- */
       var T3 = { ok:false, failed:false, ready:false, scene:null, camera:null, renderer:null,
                  clock:null, templates:{}, petScale:.8, pending:[], ball:null, ballHit:null,
-                 ballPct:{ x:60, y:66 }, ballTX:0, ballTZ:0, focusX:0, focusTX:0, lastW:0, lastH:0, coatTex:{} };
-      var ROOM3D_X = { classroom:0, playground:46, cafeteria:92, garden:138 };
+                 ballPct:{ x:60, y:66 }, ballTX:0, ballTZ:0, camYaw:Math.PI/2, camSnap:true, lastW:0, lastH:0, coatTex:{} };
+      /* v5 大世界布局（世界单位）：教室西边是房子，操场在东边，食堂在操场北边，花园在操场南边，
+         各区地面首尾相接，逻辑坐标每区仍是 x 0-100、y 55-95，但每区世界跨度不同 */
+      var ROOM3D_X = { classroom:0, playground:21, cafeteria:21, garden:21 };
+      var ROOM3D_Z = { classroom:0, playground:0, cafeteria:-14.5, garden:14.5 };
+      var SPAN_X = { classroom:17, playground:25, cafeteria:17, garden:17 };
+      var SPAN_Z = { classroom:10.6, playground:17, cafeteria:11, garden:11 };
       var STATE_CLIP = { idle:"idle", study:"idle", play:"dance", eat:"eat", sleep:"static" };
       var labelsBox = document.getElementById("labels");
       var sceneTip = document.getElementById("sceneTip");
@@ -6667,10 +6671,16 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         if(typeof remotes !== "undefined") arr = arr.concat(remotes);
         return arr;
       }
-      function petWorldX(m){ return ROOM3D_X[m.room] + (m.x / 100 - .5) * 14.5; }
-      function petWorldZ(m){ return ((m.y - 55) / 40 - .5) * 7.6; }
-      function ballWorldX(){ return ROOM3D_X.playground + (T3.ballPct.x / 100 - .5) * 14.5; }
-      function ballWorldZ(){ return ((T3.ballPct.y - 55) / 40 - .5) * 7.6; }
+      function petWorldX(m){ return ROOM3D_X[m.room] + (m.x / 100 - .5) * SPAN_X[m.room]; }
+      function petWorldZ(m){ return ROOM3D_Z[m.room] + ((m.y - 55) / 40 - .5) * SPAN_Z[m.room]; }
+      function worldToLogic(room, wx, wz){
+        return { x: ((wx - ROOM3D_X[room]) / SPAN_X[room] + .5) * 100,
+                 y: ((wz - ROOM3D_Z[room]) / SPAN_Z[room] + .5) * 40 + 55 };
+      }
+      /* 逻辑位移 (dx, dy) 对应的世界朝向角（即模型 rotation.y） */
+      function worldDirAngle(room, dx, dy){ return Math.atan2(dx * SPAN_X[room] / 100, dy * SPAN_Z[room] / 40); }
+      function ballWorldX(){ return ROOM3D_X.playground + (T3.ballPct.x / 100 - .5) * SPAN_X.playground; }
+      function ballWorldZ(){ return ROOM3D_Z.playground + ((T3.ballPct.y - 55) / 40 - .5) * SPAN_Z.playground; }
 
       function box3(w, h, d, color, x, y, z, parent){
         var ms = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshLambertMaterial({ color:color }));
@@ -6684,31 +6694,34 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         var ms = new THREE.Mesh(new THREE.SphereGeometry(r, 18, 14), new THREE.MeshLambertMaterial({ color:color }));
         ms.position.set(x, y, z); parent.add(ms); return ms;
       }
-      function ground3(color, cx){
-        var g = new THREE.Mesh(new THREE.PlaneGeometry(17, 10.6), new THREE.MeshLambertMaterial({ color:color }));
-        g.rotation.x = -Math.PI / 2; g.position.set(cx, 0, 0); T3.scene.add(g);
+      function ground3(color, cx, cz, w, d, y){
+        var g = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshLambertMaterial({ color:color }));
+        g.rotation.x = -Math.PI / 2; g.position.set(cx, y || 0, cz); T3.scene.add(g);
       }
-      function tree3(cx, dx, dz, leafColor){
-        var g = new THREE.Group(); g.position.set(cx + dx, 0, dz); T3.scene.add(g);
+      function hedge3(x, z, w, d){
+        box3(w, .9, d, 0x3f9e4d, x, .45, z, T3.scene);
+      }
+      function tree3(cx, cz, dx, dz, leafColor){
+        var g = new THREE.Group(); g.position.set(cx + dx, 0, cz + dz); T3.scene.add(g);
         cyl3(.2, .3, 1.7, 0x9a6a3f, 0, .85, 0, g);
         sph3(1.35, leafColor, 0, 2.5, 0, g);
         sph3(.95, leafColor, -.95, 1.95, .2, g);
         sph3(1.0, leafColor, .95, 2.0, -.15, g);
       }
-      function desk3(cx, dx, dz){
-        var g = new THREE.Group(); g.position.set(cx + dx, 0, dz); T3.scene.add(g);
+      function desk3(cx, cz, dx, dz){
+        var g = new THREE.Group(); g.position.set(cx + dx, 0, cz + dz); T3.scene.add(g);
         box3(2.1, .14, 1.15, 0xb5793f, 0, .62, 0, g);
         box3(1.85, .55, .95, 0xa06a34, 0, .3, 0, g);
       }
-      function table3(cx, dx, dz){
-        var g = new THREE.Group(); g.position.set(cx + dx, 0, dz); T3.scene.add(g);
+      function table3(cx, cz, dx, dz){
+        var g = new THREE.Group(); g.position.set(cx + dx, 0, cz + dz); T3.scene.add(g);
         cyl3(1.15, 1.15, .12, 0xc97b4a, 0, .78, 0, g);
         cyl3(.09, .13, .78, 0x8a5a30, 0, .39, 0, g);
         cyl3(.3, .22, .12, 0xffffff, -.4, .9, .2, g);
         cyl3(.3, .22, .12, 0xfff3d6, .42, .9, -.18, g);
       }
-      function flowers3(cx, dx, dz, colors){
-        var g = new THREE.Group(); g.position.set(cx + dx, 0, dz); T3.scene.add(g);
+      function flowers3(cx, cz, dx, dz, colors){
+        var g = new THREE.Group(); g.position.set(cx + dx, 0, cz + dz); T3.scene.add(g);
         cyl3(1.0, 1.1, .12, 0x6fb85e, 0, .06, 0, g);
         for(var i = 0; i < 6; i++){
           var a = i / 6 * Math.PI * 2;
@@ -6717,47 +6730,77 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         sph3(.16, colors[1 % colors.length], 0, .34, 0, g);
       }
       function buildRooms(){
-        /* 教室 */
-        var cx = ROOM3D_X.classroom;
-        ground3(0xd99e63, cx);
-        box3(17, 5.6, .3, 0xffedcb, cx, 2.8, -5.3, T3.scene);
-        box3(7.6, 3.3, .18, 0x8a5a30, cx, 2.55, -5.08, T3.scene);
-        box3(7.1, 2.85, .08, 0x4a7a64, cx, 2.55, -4.97, T3.scene);
-        var clock = cyl3(.52, .52, .09, 0xffffff, cx + 5.8, 3.7, -5.05, T3.scene);
+        var cx, cz;
+        /* 远景草地打底（一直铺到地平线），再铺整片校园大草坪 */
+        ground3(0x6fb85e, 12, 0, 220, 220, -0.06);
+        ground3(0x79c765, 12, 0, 46, 43, -0.02);
+        /* ---- 教室：西边一栋房子（中心 0,0，占地 17×10.6；墙外扩 0.35，宠物贴墙不穿模） ---- */
+        cx = ROOM3D_X.classroom; cz = ROOM3D_Z.classroom;
+        ground3(0xd99e63, cx, cz, 17, 10.6, 0.01);
+        box3(17.7, 5.6, .3, 0xffedcb, cx, 2.8, -5.65, T3.scene);              /* 北墙 */
+        box3(17.7, 5.6, .3, 0xffedcb, cx, 2.8, 5.65, T3.scene);               /* 南墙 */
+        box3(.3, 5.6, 11.6, 0xffedcb, cx - 8.85, 2.8, 0, T3.scene);           /* 西墙 */
+        box3(.3, 5.6, 4.05, 0xffedcb, cx + 8.85, 2.8, -3.625, T3.scene);      /* 东墙北段 */
+        box3(.3, 5.6, 4.05, 0xffedcb, cx + 8.85, 2.8, 3.625, T3.scene);       /* 东墙南段 */
+        box3(.3, 2.6, 3.2, 0xffedcb, cx + 8.85, 4.3, 0, T3.scene);            /* 门楣 */
+        box3(.24, 3.0, .24, 0x8a5a30, cx + 8.85, 1.5, -1.6, T3.scene);        /* 门框 */
+        box3(.24, 3.0, .24, 0x8a5a30, cx + 8.85, 1.5, 1.6, T3.scene);
+        box3(7.6, 2.6, .18, 0x8a5a30, cx, 3.15, -5.47, T3.scene);             /* 黑板框（抬高，宠物头顶碰不到） */
+        box3(7.1, 2.2, .08, 0x4a7a64, cx, 3.15, -5.36, T3.scene);             /* 黑板 */
+        var clock = cyl3(.52, .52, .09, 0xffffff, cx + 5.8, 3.7, -5.42, T3.scene);
         clock.rotation.x = Math.PI / 2;
-        desk3(cx, -4.8, 1.9); desk3(cx, 0, 2.2); desk3(cx, 4.8, 1.9);
-        desk3(cx, -2.6, -1.3); desk3(cx, 2.6, -1.3);
+        desk3(cx, cz, -4.8, 1.9); desk3(cx, cz, 0, 2.2); desk3(cx, cz, 4.8, 1.9);
+        desk3(cx, cz, -2.6, -1.3); desk3(cx, cz, 2.6, -1.3);
         box3(.7, .16, .5, 0xff8fa3, cx - 4.8, .78, 1.9, T3.scene);
         box3(.7, .16, .5, 0x5aa9e6, cx + 4.8, .78, 1.9, T3.scene);
-        /* 操场 */
-        cx = ROOM3D_X.playground;
-        ground3(0x79c765, cx);
+        box3(1.6, 2.0, .06, 0xff8fa3, cx - 5, 2.6, 5.56, T3.scene);           /* 南墙海报 */
+        box3(1.6, 2.0, .06, 0x5aa9e6, cx + 5, 2.6, 5.56, T3.scene);
+        /* ---- 操场：东边大草地 + 跑道（中心 21,0，占地 25×17） ---- */
+        cx = ROOM3D_X.playground; cz = ROOM3D_Z.playground;
+        ground3(0x86d173, cx, cz, 25, 17, 0.01);
         var track = new THREE.Mesh(new THREE.RingGeometry(2.5, 4.3, 42), new THREE.MeshLambertMaterial({ color:0xe08a5f, side:THREE.DoubleSide }));
         track.rotation.x = -Math.PI / 2; track.position.set(cx + .4, .02, .3); T3.scene.add(track);
-        tree3(cx, -6.2, -2.8, 0x4fae5c);
+        tree3(cx, cz, -6.2, -2.8, 0x4fae5c);
         sph3(.5, 0xffffff, cx + 6.4, .5, -3.4, T3.scene);
-        /* 食堂 */
-        cx = ROOM3D_X.cafeteria;
-        ground3(0xe8b07e, cx);
-        box3(17, 5.6, .3, 0xfff1dc, cx, 2.8, -5.3, T3.scene);
-        box3(4.8, 1.05, .16, 0x3f6b57, cx, 3.6, -5.08, T3.scene);
-        box3(8.8, 1.15, 1.3, 0xe8836b, cx, .58, -3.5, T3.scene);
-        box3(9.0, .12, 1.55, 0xfdf6d8, cx, 1.22, -3.5, T3.scene);
-        cyl3(.34, .26, .16, 0xffb52e, cx - 2.6, 1.36, -3.5, T3.scene);
-        cyl3(.34, .26, .16, 0xff8fa3, cx, 1.36, -3.5, T3.scene);
-        cyl3(.34, .26, .16, 0x8fd07f, cx + 2.6, 1.36, -3.5, T3.scene);
-        table3(cx, -4.6, 1.9); table3(cx, .2, 2.5); table3(cx, 5.0, 1.8);
-        /* 花园 */
-        cx = ROOM3D_X.garden;
-        ground3(0x8fd07f, cx);
-        var p1 = box3(1.7, .05, 3.6, 0xf3dfae, cx - 1.4, .03, 2.8, T3.scene); p1.rotation.y = .3;
-        var p2 = box3(1.7, .05, 3.4, 0xf3dfae, cx + .5, .03, -.5, T3.scene); p2.rotation.y = -.22;
-        var p3m = box3(1.7, .05, 3.2, 0xf3dfae, cx + 2.3, .03, -3.4, T3.scene); p3m.rotation.y = .18;
-        tree3(cx, 6.0, -3.0, 0xffb7c9);
-        tree3(cx, -6.4, -3.2, 0x57b96a);
-        flowers3(cx, -4.6, 1.6, [0xff8fa3, 0xffd94d, 0xffffff]);
-        flowers3(cx, 4.4, 2.6, [0xc39bff, 0xff8fa3, 0xffd94d]);
-        flowers3(cx, -2.2, -3.4, [0xff9d5c, 0xffffff, 0xff8fa3]);
+        /* ---- 食堂：操场北边（中心 21,-14.5，占地 17×11） ---- */
+        cx = ROOM3D_X.cafeteria; cz = ROOM3D_Z.cafeteria;
+        ground3(0xe8b07e, cx, cz, 17, 11, 0.01);
+        box3(17, 5.6, .3, 0xfff1dc, cx, 2.8, cz - 5.9, T3.scene);             /* 北墙 */
+        box3(4.8, 1.05, .16, 0x3f6b57, cx, 3.6, cz - 5.58, T3.scene);         /* 今日菜单牌 */
+        box3(8.8, 1.15, 1.3, 0xe8836b, cx, .58, cz - 3.5, T3.scene);          /* 取餐台 */
+        box3(9.0, .12, 1.55, 0xfdf6d8, cx, 1.22, cz - 3.5, T3.scene);
+        cyl3(.34, .26, .16, 0xffb52e, cx - 2.6, 1.36, cz - 3.5, T3.scene);
+        cyl3(.34, .26, .16, 0xff8fa3, cx, 1.36, cz - 3.5, T3.scene);
+        cyl3(.34, .26, .16, 0x8fd07f, cx + 2.6, 1.36, cz - 3.5, T3.scene);
+        table3(cx, cz, -4.6, 1.9); table3(cx, cz, .2, 2.5); table3(cx, cz, 5.0, 1.8);
+        /* ---- 花园：操场南边（中心 21,14.5，占地 17×11） ---- */
+        cx = ROOM3D_X.garden; cz = ROOM3D_Z.garden;
+        ground3(0x8fd07f, cx, cz, 17, 11, 0.01);
+        tree3(cx, cz, 6.0, -3.0, 0xffb7c9);
+        tree3(cx, cz, -6.4, -3.2, 0x57b96a);
+        flowers3(cx, cz, -4.6, 1.6, [0xff8fa3, 0xffd94d, 0xffffff]);
+        flowers3(cx, cz, 4.4, 2.6, [0xc39bff, 0xff8fa3, 0xffd94d]);
+        flowers3(cx, cz, -2.2, -3.4, [0xff9d5c, 0xffffff, 0xff8fa3]);
+        /* ---- 小路：教室门槛 + 操场↔食堂 / 操场↔花园的路口 ---- */
+        ground3(0xf3dfae, 9.0, 0, 1.6, 3.4, 0.03);
+        ground3(0xf3dfae, 21, -8.75, 8, 1.0, 0.03);
+        ground3(0xf3dfae, 21, 8.75, 8, 1.0, 0.03);
+        /* ---- 绿篱：把“走不通的边”挡住，路口留空（不是空气墙） ---- */
+        hedge3(8.5, -7.07, .6, 2.85); hedge3(8.5, 7.07, .6, 2.85);           /* 操场西边，教室墙两侧 */
+        hedge3(12.75, -8.5, 8.5, .6); hedge3(29.25, -8.5, 8.5, .6);          /* 操场北边，路口两侧 */
+        hedge3(12.75, 8.5, 8.5, .6); hedge3(29.25, 8.5, 8.5, .6);            /* 操场南边，路口两侧 */
+        hedge3(14.75, -9, 4.5, .6); hedge3(27.25, -9, 4.5, .6);              /* 食堂南边，路口两侧 */
+        hedge3(14.75, 9, 4.5, .6); hedge3(27.25, 9, 4.5, .6);                /* 花园北边，路口两侧 */
+        hedge3(12, -20.8, 44, .6); hedge3(12, 20.8, 44, .6);                 /* 校园外围 */
+        hedge3(-10.2, 0, .6, 41.6); hedge3(34.2, 0, .6, 41.6);
+        /* ---- 远景：教学楼 + 小山，地平线不空 ---- */
+        box3(14, 9, 5, 0xffe0b8, 48, 4.5, -26, T3.scene);
+        box3(15, 1, 6, 0xd96a4a, 48, 9.5, -26, T3.scene);
+        box3(10, 7, 5, 0xffedcb, -24, 3.5, -30, T3.scene);
+        box3(11, 1, 6, 0x7a9cc6, -24, 7.5, -30, T3.scene);
+        var h1 = sph3(10, 0x8fd07f, -30, 0, 26, T3.scene); h1.scale.y = .32;
+        var h2 = sph3(12, 0x7cc46a, 56, 0, 28, T3.scene); h2.scale.y = .3;
+        var h3 = sph3(9, 0x8fd07f, 52, 0, -34, T3.scene); h3.scale.y = .3;
       }
       function buildBall(){
         T3.ball = sph3(.42, 0xff5a4e, ballWorldX(), .42, ballWorldZ(), T3.scene);
@@ -6771,7 +6814,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         T3.ballTX = ballWorldX(); T3.ballTZ = ballWorldZ();
       }
       function onCanvasTap(ev){
-        if(currentRoom !== "playground" || !T3.ballHit || !entered) return;
+        if(me.room !== "playground" || !T3.ballHit || !entered) return;
         var rect = T3.renderer.domElement.getBoundingClientRect();
         var nx = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
         var ny = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
@@ -6846,7 +6889,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
           var scene = new THREE.Scene();
           scene.background = new THREE.Color(0xbfe6ff);
           T3.scene = scene;
-          T3.camera = new THREE.PerspectiveCamera(40, 1.5, .1, 400);
+          T3.camera = new THREE.PerspectiveCamera(52, 1.5, .1, 400);
           scene.add(new THREE.HemisphereLight(0xffffff, 0x9a8a68, 1.1));
           var sun = new THREE.DirectionalLight(0xfff1d6, 1.0);
           sun.position.set(8, 14, 9); scene.add(sun);
@@ -6964,26 +7007,28 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         if(i >= 0) T3.pending.splice(i, 1);
       }
       function movePet(m, x, y){
-        m.tx = Math.min(92, Math.max(8, x));
-        m.ty = Math.min(91, Math.max(57, y));
+        m.tx = Math.min(100, Math.max(0, x));
+        m.ty = Math.min(95, Math.max(55, y));
       }
 
-      /* ---------------- 障碍碰撞（百分比坐标，圆对 AABB 推出） ---------------- */
+      /* ---------------- 障碍碰撞（百分比坐标，圆对 AABB 推出） ----------------
+         数值按 v5 每区世界跨度从 3D 家具位置换算：教室 17×10.6、操场 25×17、食堂/花园 17×11。
+         区域边缘只做夹取，穿区由 tryCrossRoom 在夹取前处理（门/路口处换区，其余边被墙或绿篱挡住）。 */
       var OBSTACLES = {
         classroom: [
-          { x:16.9, y:85.0, hx:7.2, hy:3.0 }, { x:50, y:86.6, hx:7.2, hy:3.0 }, { x:83.1, y:85.0, hx:7.2, hy:3.0 },
-          { x:32.1, y:68.2, hx:7.2, hy:3.0 }, { x:67.9, y:68.2, hx:7.2, hy:3.0 }
+          { x:21.8, y:82.2, hx:6.5, hy:2.5 }, { x:50, y:83.3, hx:6.5, hy:2.5 }, { x:78.2, y:82.2, hx:6.5, hy:2.5 },
+          { x:34.7, y:70.1, hx:6.5, hy:2.5 }, { x:65.3, y:70.1, hx:6.5, hy:2.5 }
         ],
         playground: [
-          { x:7.2, y:60.3, hx:3.5, hy:3.0 }, { x:94.1, y:57.1, hx:3.4, hy:2.6 }
+          { x:25.2, y:68.4, hx:5, hy:3.5 }, { x:75.6, y:67.0, hx:3, hy:2.5 }
         ],
         cafeteria: [
-          { x:50, y:56.6, hx:30.3, hy:3.4 },
-          { x:18.3, y:85.0, hx:7.9, hy:6.1 }, { x:51.4, y:88.2, hx:7.9, hy:6.1 }, { x:84.5, y:84.5, hx:7.9, hy:6.1 }
+          { x:50, y:62.3, hx:26, hy:2.5 },
+          { x:22.9, y:81.9, hx:7, hy:4.5 }, { x:51.2, y:84.1, hx:7, hy:4.5 }, { x:79.4, y:81.5, hx:7, hy:4.5 }
         ],
         garden: [
-          { x:91.4, y:59.2, hx:3.5, hy:3.0 }, { x:5.9, y:58.2, hx:3.5, hy:3.0 },
-          { x:18.3, y:83.4, hx:7.6, hy:5.8 }, { x:80.3, y:88.7, hx:7.6, hy:5.8 }, { x:34.8, y:57.1, hx:7.6, hy:5.8 }
+          { x:85.3, y:63.3, hx:5, hy:3.5 }, { x:12.4, y:62.7, hx:5, hy:3.5 },
+          { x:22.9, y:80.8, hx:6, hy:4 }, { x:75.9, y:84.5, hx:6, hy:4 }, { x:37.1, y:62.6, hx:6, hy:4 }
         ]
       };
       function resolveObstacles(m){
@@ -7012,8 +7057,74 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
             }
           }
         }
-        m.x = Math.min(92, Math.max(8, m.x));
-        m.y = Math.min(91, Math.max(57, m.y));
+        m.x = Math.min(100, Math.max(0, m.x));
+        m.y = Math.min(95, Math.max(55, m.y));
+      }
+
+      /* ---------------- 穿区规则（我、模拟同学、远程真人共用同一套） ----------------
+         走到本区域边缘且落在连通口带内，就换 room，世界坐标保持连续（往相邻区再推 0.6 世界单位再换算回逻辑坐标）。
+         连通口：教室东门（y 69-81）↔操场西边；操场北路口（x 36-64）↔食堂南边；操场南路口（x 36-64）↔花园北边。 */
+      var ENTRY_POINTS = {
+        classroom: { x:80, y:75, face:Math.PI / 2 },
+        playground: { x:8, y:75, face:Math.PI / 2 },
+        cafeteria: { x:50, y:90, face:Math.PI },
+        garden: { x:50, y:60, face:0 }
+      };
+      var EXITS = [
+        { from:"classroom", edge:"e", gate:[69, 81], to:"playground" },
+        { from:"playground", edge:"w", gate:[69, 81], to:"classroom" },
+        { from:"playground", edge:"n", gate:[36, 64], to:"cafeteria" },
+        { from:"cafeteria", edge:"s", gate:[36, 64], to:"playground" },
+        { from:"playground", edge:"s", gate:[36, 64], to:"garden" },
+        { from:"garden", edge:"n", gate:[36, 64], to:"playground" }
+      ];
+      function exitGate(from, to){
+        if(from === "classroom") return { x:100, y:75 };
+        if(from === "playground" && to === "classroom") return { x:0, y:75 };
+        if(from === "playground" && to === "cafeteria") return { x:50, y:55 };
+        if(from === "cafeteria") return { x:50, y:95 };
+        if(from === "playground" && to === "garden") return { x:50, y:95 };
+        if(from === "garden") return { x:50, y:55 };
+        return null;
+      }
+      function tryCrossRoom(m){
+        if(m.noCrossUntil && performance.now() < m.noCrossUntil) return false;
+        for(var i = 0; i < EXITS.length; i++){
+          var e = EXITS[i];
+          if(e.from !== m.room) continue;
+          var at = false;
+          if(e.edge === "e") at = m.x >= 99;
+          else if(e.edge === "w") at = m.x <= 1;
+          else if(e.edge === "n") at = m.y <= 56;
+          else if(e.edge === "s") at = m.y >= 94;
+          if(!at) continue;
+          var along = (e.edge === "e" || e.edge === "w") ? m.y : m.x;
+          if(along < e.gate[0] || along > e.gate[1]) continue;
+          var oldRoom = m.room, oldName = ROOMS[oldRoom].name;
+          var w = { x: petWorldX(m), z: petWorldZ(m) };
+          if(e.edge === "e") w.x += 1.0;
+          else if(e.edge === "w") w.x -= 1.0;
+          else if(e.edge === "n") w.z -= 1.0;
+          else if(e.edge === "s") w.z += 1.0;
+          var lg = worldToLogic(e.to, w.x, w.z);
+          m.room = e.to; m.x = lg.x; m.y = lg.y;
+          m.noCrossUntil = performance.now() + 600;
+          if(m.trip && m.trip.room === e.to){ m.tx = m.trip.x; m.ty = m.trip.y; }
+          else { m.tx = m.x; m.ty = m.y; }
+          if(m.p3) m.p3.group.position.set(petWorldX(m), 0, petWorldZ(m));
+          if(m.isMe){
+            setRoomUI();
+            feed("<b>" + escapeHtml(m.name) + "</b> 从" + oldName + "走到了" + ROOMS[e.to].name);
+            netRoomChanged();
+          } else if(!m.isRemote){
+            feed("<b>" + escapeHtml(m.name) + "</b> 从" + oldName + "跑去" + ROOMS[e.to].name + "了");
+            updateCounts(); renderRoster();
+          } else {
+            updateCounts(); renderRoster();
+          }
+          return true;
+        }
+        return false;
       }
 
       /* ---------------- 走路控制：键盘 + 虚拟摇杆 ---------------- */
@@ -7086,7 +7197,8 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         if(m > 1){ x /= m; y /= m; m = 1; }
         return { x:x, y:y, mag:m };
       }
-      /* 我自己的移动：直接写 x/y（走 14 / 跑 26 单位每秒），不走 stepPet 的目标滑行 */
+      /* 我自己的移动：相机相对方向（W/摇杆上 = 屏幕前方，A/D = 屏幕左右），
+         走 2.0 / 跑 3.8 世界单位每秒；走到门/路口就穿区，其余边由 resolveObstacles 挡住 */
       function stepMe(dt){
         var p = me.p3;
         if(!p) return;
@@ -7095,16 +7207,19 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         if(ctrl){
           var run = keys.shift || joy.mag > .85;
           me.running = run;
-          var d = Math.max(v.mag, .0001);
-          var ux = v.x / d, uy = v.y / d;
-          var sp = (run ? 26 : 14) * Math.min(1, v.mag);
-          me.x += ux * sp * dt;
-          me.y += uy * sp * dt;
-          me.x = Math.min(92, Math.max(8, me.x));
-          me.y = Math.min(91, Math.max(57, me.y));
+          var fx = Math.sin(T3.camYaw), fz = Math.cos(T3.camYaw);
+          var rx = -Math.cos(T3.camYaw), rz = Math.sin(T3.camYaw);
+          var wx = fx * (-v.y) + rx * v.x;
+          var wz = fz * (-v.y) + rz * v.x;
+          var wl = Math.sqrt(wx * wx + wz * wz) || 1;
+          wx /= wl; wz /= wl;
+          var sp = (run ? 3.8 : 2.0) * Math.min(1, v.mag);
+          me.x += wx * sp * dt * 100 / SPAN_X[me.room];
+          me.y += wz * sp * dt * 40 / SPAN_Z[me.room];
+          tryCrossRoom(me);
           resolveObstacles(me);
           me.tx = me.x; me.ty = me.y;
-          me.face = Math.atan2(ux * .145, uy * .19);
+          me.face = Math.atan2(wx, wz);
           me.moving = true;
           me.ctrlWas = true;
           netMove(true);
@@ -7119,7 +7234,9 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
             var st = 9 * dt;
             if(st >= dist){ me.x = tx; me.y = ty; }
             else { me.x += dx / dist * st; me.y += dy / dist * st; }
-            me.face = Math.atan2(dx * .145, dy * .19);
+            me.face = worldDirAngle(me.room, dx, dy);
+            tryCrossRoom(me);
+            resolveObstacles(me);
           }
         }
         p.group.position.set(petWorldX(me), 0, petWorldZ(me));
@@ -7188,15 +7305,21 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
           var sp = spd * dt;
           if(sp >= dist){ m.x = tx; m.y = ty; }
           else { m.x += dx / dist * sp; m.y += dy / dist * sp; }
-          if(Math.abs(dx) > .2) m.dir = dx < 0 ? -1 : 1;
+          m.face = worldDirAngle(m.room, dx, dy);
+          tryCrossRoom(m);
+          resolveObstacles(m);
+        }
+        if(m.trip && m.trip.room === m.room){
+          var tdx = m.trip.x - m.x, tdy = m.trip.y - m.y;
+          if(Math.sqrt(tdx * tdx + tdy * tdy) < 4){ m.trip = null; m.tx = m.x; m.ty = m.y; }
         }
         p.group.position.set(petWorldX(m), 0, petWorldZ(m));
-        var targetRot = m.dir < 0 ? -Math.PI / 2 : Math.PI / 2;
-        if(m.isRemote && dist > .6) targetRot = Math.atan2(dx * .145, dy * .19);
-        var d = targetRot - p.group.rotation.y;
-        while(d > Math.PI) d -= Math.PI * 2;
-        while(d < -Math.PI) d += Math.PI * 2;
-        p.group.rotation.y += d * Math.min(1, dt * 10);
+        if(m.face != null){
+          var d = m.face - p.group.rotation.y;
+          while(d > Math.PI) d -= Math.PI * 2;
+          while(d < -Math.PI) d += Math.PI * 2;
+          p.group.rotation.y += d * Math.min(1, dt * 10);
+        }
       }
       function projectLabel(m){
         var p = m.p3;
@@ -7209,6 +7332,24 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         p.label.style.top = ((-V3.y * .5 + .5) * h) + "px";
         p.label.style.display = "block";
       }
+      /* 相机不能穿墙：人在教室里时相机夹在室内；人在室外时相机不得钻进教室（会隔着墙看不见人），
+         推到最近的教室外墙面外侧。高度固定 1.6，食堂取餐台（1.28 高）等矮家具不会挡镜头。 */
+      function clampCamera(px, pz, room){
+        var x = Math.max(-9.2, Math.min(33.8, px));
+        var z = Math.max(-20.2, Math.min(20.2, pz));
+        if(room === "classroom"){
+          x = Math.max(-8.1, Math.min(8.1, x));
+          z = Math.max(-4.9, Math.min(4.9, z));
+        } else if(x > -8.5 && x < 8.5 && z > -5.3 && z < 5.3){
+          var dE = 8.5 - x, dW = x + 8.5, dS = 5.3 - z, dN = z + 5.3;
+          var mn = Math.min(dE, dW, dS, dN);
+          if(mn === dE) x = 8.9;
+          else if(mn === dW) x = -8.9;
+          else if(mn === dS) z = 5.7;
+          else z = -5.7;
+        }
+        return { x:x, z:z };
+      }
       function loop3d(){
         requestAnimationFrame(loop3d);
         if(!T3.renderer) return;
@@ -7216,13 +7357,26 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         if(wrap && (wrap.clientWidth !== T3.lastW || wrap.clientHeight !== T3.lastH)) resizeGL();
         var dt = Math.min(.05, T3.clock.getDelta());
         var t = T3.clock.elapsedTime;
-        if(entered){
-          var ccx = ROOM3D_X[currentRoom];
-          T3.focusTX = Math.max(ccx - 3.5, Math.min(ccx + 3.5, petWorldX(me)));
+        if(entered && me.p3){
+          /* 第三人称平视相机：身后 3.5、高度 1.6，看向角色前方 3.5、高度 1.0，FOV 52。
+             camYaw 只在“往前走”的分量占优时才跟到移动方向后方，纯左右平移/后退时不转镜头（否则会原地打转）。 */
+          var pp = me.p3.group.position;
+          if(me.moving && me.face != null){
+            var phi = me.face - T3.camYaw;
+            while(phi > Math.PI) phi -= Math.PI * 2;
+            while(phi < -Math.PI) phi += Math.PI * 2;
+            if(Math.abs(phi) < 1.1) T3.camYaw += phi * Math.min(1, dt * 2.2);
+          }
+          var cfx = Math.sin(T3.camYaw), cfz = Math.cos(T3.camYaw);
+          var cl = clampCamera(pp.x - cfx * 3.5, pp.z - cfz * 3.5, me.room);
+          if(T3.camSnap){ T3.camera.position.set(cl.x, 1.6, cl.z); T3.camSnap = false; }
+          else {
+            T3.camera.position.x += (cl.x - T3.camera.position.x) * Math.min(1, dt * 7);
+            T3.camera.position.y += (1.6 - T3.camera.position.y) * Math.min(1, dt * 7);
+            T3.camera.position.z += (cl.z - T3.camera.position.z) * Math.min(1, dt * 7);
+          }
+          T3.camera.lookAt(pp.x + cfx * 3.5, 1.0, pp.z + cfz * 3.5);
         }
-        T3.focusX += (T3.focusTX - T3.focusX) * Math.min(1, dt * 3.4);
-        T3.camera.position.set(T3.focusX, 12.2, 13.8);
-        T3.camera.lookAt(T3.focusX, .2, -.8);
         if(T3.ball){
           T3.ball.position.x += (T3.ballTX - T3.ball.position.x) * Math.min(1, dt * 5);
           T3.ball.position.z += (T3.ballTZ - T3.ball.position.z) * Math.min(1, dt * 5);
@@ -7234,9 +7388,13 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         for(var i = 0; i < pets.length; i++){
           var m = pets[i];
           if(!m.p3) continue;
-          var vis = m.room === currentRoom;
-          m.p3.group.visible = vis;
-          if(!vis){ m.p3.label.style.display = "none"; continue; }
+          /* v5 是同一张大世界，所有宠物始终可见，不再按房间隐藏；
+             只有贴住镜头（1.3 世界单位内）的同学暂时隐藏，不然会糊住画面 */
+          var gp = m.p3.group.position;
+          var cdx = gp.x - T3.camera.position.x, cdz = gp.z - T3.camera.position.z;
+          var blocked = !m.isMe && (cdx * cdx + cdz * cdz) < 1.69;
+          m.p3.group.visible = !blocked;
+          if(blocked){ m.p3.label.style.display = "none"; continue; }
           if(m.isMe) stepMe(dt); else stepPet(m, dt);
           applyClip(m);
           m.p3.mixer.update(dt);
@@ -7348,7 +7506,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         speak.textContent = me.species === "cat" ? "喵一声" : "汪一声";
         speak.addEventListener("click", doSpeak);
         box.appendChild(speak);
-        ACTIONS[currentRoom].forEach(function(a){
+        ACTIONS[me.room].forEach(function(a){
           var b = document.createElement("button");
           b.type = "button"; b.className = "act-btn"; b.textContent = a.label;
           b.addEventListener("click", function(){
@@ -7386,18 +7544,24 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
           box.appendChild(b);
         });
       }
-      function switchRoom(room){
-        currentRoom = room; me.room = room;
-        $$(".tab").forEach(function(t){ t.setAttribute("aria-selected", t.getAttribute("data-room") === room ? "true" : "false"); });
-        T3.focusTX = ROOM3D_X[room];
-        me.x = rand(30,70); me.y = rand(64,86);
+      /* 顶部标签页改成快速传送：点一下传送到该区域入口（走已有传送逻辑 + 动态墙消息），
+         不再做场景切换；各区域人数照常显示。 */
+      function setRoomUI(){
+        $$(".tab").forEach(function(t){ t.setAttribute("aria-selected", t.getAttribute("data-room") === me.room ? "true" : "false"); });
+        renderActions(); updateCounts(); renderRoster();
+      }
+      function teleportTo(room, silent){
+        var ep = ENTRY_POINTS[room] || ENTRY_POINTS.classroom;
+        me.room = room; me.x = ep.x; me.y = ep.y; me.tx = ep.x; me.ty = ep.y;
+        me.face = ep.face; T3.camYaw = ep.face; T3.camSnap = true;
         resolveObstacles(me);
         placePet(me);
-        renderActions(); updateCounts(); renderRoster();
+        setRoomUI();
+        if(!silent) feed("<b>" + escapeHtml(me.name) + "</b> 传送到了" + ROOMS[room].name);
         netRoomChanged();
       }
       $$(".tab").forEach(function(t){
-        t.addEventListener("click", function(){ switchRoom(t.getAttribute("data-room")); });
+        t.addEventListener("click", function(){ teleportTo(t.getAttribute("data-room")); });
       });
 
       /* ---------------- 叫声（WebAudio 合成） ---------------- */
@@ -7443,7 +7607,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         reactNearby();
       }
       function reactNearby(){
-        var near = classmates.filter(function(m){ return m.room === currentRoom; });
+        var near = classmates.filter(function(m){ return m.room === me.room; });
         if(!near.length) return;
         var m = pick(near);
         setTimeout(function(){
@@ -7460,42 +7624,54 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
       }
       /* 皮球已经搬进 3D 操场：点 3D 红球得零食，placeBall 在 3D 部分定义 */
 
-      /* ---------------- 同学模拟 ---------------- */
+      /* ---------------- 同学模拟：跨区走路，不再瞬移 ----------------
+         想去别的区时先定一个目标点（trip），分段走过去：先走向本区出口（门/路口），
+         穿区后（tryCrossRoom）再走向目标点；mateAct 每 2.6 秒轮 2 位同学。 */
       function mateWander(m){
         movePet(m, Math.min(92, Math.max(8, m.x + rand(-16,16))), Math.min(91, Math.max(57, m.y + rand(-7,7))));
       }
+      function mateDriveTrip(m){
+        if(!m.trip) return false;
+        if(m.trip.room === m.room){
+          movePet(m, m.trip.x, m.trip.y);
+        } else {
+          var g = exitGate(m.room, m.trip.room);
+          if(g) movePet(m, g.x, g.y);
+        }
+        return true;
+      }
       function mateAct(){
         if(!classmates.length) return;
-        var m = pick(classmates);
-        var r = Math.random();
-        if(r < .45){
-          mateWander(m);
-        } else if(r < .65){
-          var line = m.species === "cat" ? pick(CAT_LINES) : pick(DOG_LINES);
-          if(m.room === currentRoom) showBubble(m, line, rand(2200, 3200));
-        } else if(r < .85){
-          m.action = pick(ROOMS[m.room].actions);
-          var st = "idle";
-          if(/打盹|晒太阳|看云/.test(m.action)) st = "sleep";
-          else if(/吃|喝|吧唧|舔盘|等加餐/.test(m.action)) st = "eat";
-          else if(/追|扑|打滚|跑圈/.test(m.action)) st = "play";
-          else if(/听课|翻绘本|练写字/.test(m.action)) st = "study";
-          setState(m, st, rand(4000, 7000));
-          if(Math.random() < .35){
-            feed("<b>" + m.name + "</b> 在" + ROOMS[m.room].name + m.action);
+        for(var n = 0; n < 2; n++){
+          var m = pick(classmates);
+          var r = Math.random();
+          if(m.trip && r < .7){
+            mateDriveTrip(m);
+          } else if(r < .45){
+            if(m.trip) mateDriveTrip(m); else mateWander(m);
+          } else if(r < .65){
+            var line = m.species === "cat" ? pick(CAT_LINES) : pick(DOG_LINES);
+            if(m.room === me.room) showBubble(m, line, rand(2200, 3200));
+          } else if(r < .85){
+            m.action = pick(ROOMS[m.room].actions);
+            var st = "idle";
+            if(/打盹|晒太阳|看云/.test(m.action)) st = "sleep";
+            else if(/吃|喝|吧唧|舔盘|等加餐/.test(m.action)) st = "eat";
+            else if(/追|扑|打滚|跑圈/.test(m.action)) st = "play";
+            else if(/听课|翻绘本|练写字/.test(m.action)) st = "study";
+            setState(m, st, rand(4000, 7000));
+            if(Math.random() < .35){
+              feed("<b>" + m.name + "</b> 在" + ROOMS[m.room].name + m.action);
+            }
+          } else if(r < .93){
+            var next = pick(ROOM_KEYS.filter(function(k){ return k !== m.room; }));
+            m.trip = { room: next, x: rand(20, 80), y: rand(62, 88) };
+            feed("<b>" + m.name + "</b> 想去" + ROOMS[next].name + "玩，出发啦");
+            mateDriveTrip(m);
+          } else if(r < .97){
+            if(m.room === me.room && Math.random() < .6) popHeart(m);
+            if(m.trip) mateDriveTrip(m); else mateWander(m);
           }
-        } else if(r < .93){
-          var old = m.room;
-          var next = pick(ROOM_KEYS.filter(function(k){ return k !== old; }));
-          m.room = next; m.x = rand(14,86); m.y = rand(62,89);
-          m.action = pick(ROOMS[next].actions);
-          resolveObstacles(m);
-          placePet(m);
-          feed("<b>" + m.name + "</b> 从" + ROOMS[old].name + "跑去" + ROOMS[next].name + "了");
-          updateCounts();
-        } else if(r < .97){
-          if(m.room === currentRoom && Math.random() < .6) popHeart(m);
-          mateWander(m);
         }
         renderRoster();
       }
@@ -7587,7 +7763,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
                   room: ROOMS[meta.room] ? meta.room : "classroom",
                   action: meta.action || "刚入学", state:"idle",
                   x: +meta.x || 50, y: +meta.y || 76, tx: +meta.x || 50, ty: +meta.y || 76,
-                  dir:1, bubbleTimer:null, isMe:false, isRemote:true };
+                  dir:1, face:Math.PI / 2, bubbleTimer:null, isMe:false, isRemote:true };
             remotes.push(r);
             renderPet(r);
             feed("<b>" + escapeHtml(r.name) + "</b> 也来上学啦，是一位真人同学");
@@ -7685,10 +7861,12 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         $("#meMini").innerHTML = petSVG(me.species, coatById(me.coat), me.pattern, "idle");
         gainTreat(0);
         classmates.forEach(renderPet);
-        me.room = "classroom"; me.x = 50; me.y = 76;
+        me.room = "classroom"; me.x = 80; me.y = 75; me.face = Math.PI / 2;
+        T3.camYaw = Math.PI / 2; T3.camSnap = true;
         renderPet(me);
-        switchRoom("classroom");
+        setRoomUI();
         renderCommonActions();
+        netRoomChanged();
         renderSchedule(); updateCounts(); renderRoster();
         feed("<b>" + me.name + "</b> 入学啦，是一只" + (me.species === "cat" ? "小猫" : "小狗") + "同学");
         var greeter = pick(classmates);
@@ -7700,10 +7878,21 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         initRealtime();
         setInterval(mateAct, 2600);
         setInterval(mateArriveLeave, 24000);
-        setInterval(function(){ if(currentRoom === "playground") placeBall(); }, 7000);
+        setInterval(function(){ if(me.room === "playground") placeBall(); }, 7000);
         setInterval(renderSchedule, 60000);
         window.scrollTo(0,0);
       }
+
+      /* 调试图柄（v5 新增，供自动化实测用；不影响正常使用） */
+      window.__petSchool = {
+        me:me, classmates:classmates, remotes:remotes, net:net, T3:T3,
+        ROOMS:ROOMS, ROOM3D_X:ROOM3D_X, ROOM3D_Z:ROOM3D_Z, SPAN_X:SPAN_X, SPAN_Z:SPAN_Z,
+        EXITS:EXITS, ENTRY_POINTS:ENTRY_POINTS,
+        get entered(){ return entered; },
+        get currentRoom(){ return me.room; },
+        teleportTo:teleportTo, tryCrossRoom:tryCrossRoom, exitGate:exitGate,
+        petWorldX:petWorldX, petWorldZ:petWorldZ, worldToLogic:worldToLogic
+      };
     })();
     </script>
   </body>
