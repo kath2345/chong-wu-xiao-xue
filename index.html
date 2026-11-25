@@ -320,6 +320,24 @@
         background:#e1f0fb; color:#1668b0; border-radius:999px; padding:1px 8px;
         font-size:.72rem; font-weight:700; margin-left:5px; vertical-align:1px;
       }
+      #joy{
+        position:absolute; left:16px; bottom:16px; width:112px; height:112px; border-radius:50%;
+        background:rgba(255,255,255,.32); border:2px solid rgba(255,255,255,.75);
+        box-shadow:0 4px 14px rgba(60,40,10,.18); z-index:8; touch-action:none; display:none;
+      }
+      body.touch #joy{ display:block; }
+      @media (pointer:coarse){ #joy{ display:block; } }
+      #joyKnob{
+        position:absolute; left:50%; top:50%; width:48px; height:48px; margin:-24px 0 0 -24px;
+        border-radius:50%; background:rgba(255,255,255,.92); box-shadow:0 3px 8px rgba(0,0,0,.22);
+        pointer-events:none;
+      }
+      .move-hint{
+        position:absolute; right:12px; bottom:10px; z-index:7; pointer-events:none;
+        background:rgba(255,255,255,.85); border-radius:999px; padding:3px 11px;
+        font-size:.74rem; font-weight:600; color:var(--ink-soft);
+      }
+      @media (pointer:coarse){ .move-hint{ display:none; } }
       @media (max-width:900px){
         .layout{ grid-template-columns:1fr; }
         .feed{ max-height:250px; }
@@ -424,9 +442,12 @@
             <canvas id="gl" aria-label="3D 校园场景"></canvas>
             <div id="labels"></div>
             <div class="scene-tip" id="sceneTip">3D 校园正在搭建…</div>
+            <div id="joy" aria-hidden="true"><div id="joyKnob"></div></div>
+            <div class="move-hint">WASD / 方向键走路 · Shift 跑起来</div>
           </div>
 
                     <div class="actions" id="actions"></div>
+                    <div class="actions common-actions" id="commonActions"></div>
         </div>
 
         <aside class="side-col">
@@ -6632,7 +6653,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
       /* ---------------- 3D 校园（Three.js） ---------------- */
       var T3 = { ok:false, failed:false, ready:false, scene:null, camera:null, renderer:null,
                  clock:null, templates:{}, petScale:.8, pending:[], ball:null, ballHit:null,
-                 ballPct:{ x:60, y:66 }, ballTX:0, ballTZ:0, focusX:0, focusTX:0, lastW:0, lastH:0 };
+                 ballPct:{ x:60, y:66 }, ballTX:0, ballTZ:0, focusX:0, focusTX:0, lastW:0, lastH:0, coatTex:{} };
       var ROOM3D_X = { classroom:0, playground:46, cafeteria:92, garden:138 };
       var STATE_CLIP = { idle:"idle", study:"idle", play:"dance", eat:"eat", sleep:"static" };
       var labelsBox = document.getElementById("labels");
@@ -6826,8 +6847,8 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
           scene.background = new THREE.Color(0xbfe6ff);
           T3.scene = scene;
           T3.camera = new THREE.PerspectiveCamera(40, 1.5, .1, 400);
-          scene.add(new THREE.HemisphereLight(0xffffff, 0x9a8a68, .95));
-          var sun = new THREE.DirectionalLight(0xfff1d6, .8);
+          scene.add(new THREE.HemisphereLight(0xffffff, 0x9a8a68, 1.1));
+          var sun = new THREE.DirectionalLight(0xfff1d6, 1.0);
           sun.position.set(8, 14, 9); scene.add(sun);
           buildRooms();
           buildBall();
@@ -6844,16 +6865,64 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         }
       }
 
+      /* ---------------- 毛色重着色 ----------------
+         模型贴图是 512×512 的 8×8 调色板（每格 64×64）。material.color 是乘在贴图上的，
+         橘色乘上猫的灰蓝格 / 狗的暖棕格会变深棕，所以改为运行时重填主毛格：
+         只换两个主毛格，颜色按亮度匹配到所选毛色，其余格（眼睛/鼻子/粉色）不动。 */
+      function lum(r, g, b){ return .2126 * r + .7152 * g + .0722 * b; }
+      function recolorTexture(species, coatId){
+        var key = species + ":" + coatId;
+        if(T3.coatTex[key]) return T3.coatTex[key];
+        var tpl = T3.templates[species];
+        if(!tpl) return null;
+        var img = null;
+        tpl.scene.traverse(function(o){
+          if(!img && o.isMesh && o.material && o.material.map && o.material.map.image) img = o.material.map.image;
+        });
+        if(!img || !img.width) return null;
+        try{
+          var cv = document.createElement("canvas");
+          cv.width = img.width; cv.height = img.height;
+          var ctx = cv.getContext("2d");
+          ctx.drawImage(img, 0, 0);
+          var coat = coatById(coatId);
+          var cn = parseInt(coat.fur.slice(1), 16);
+          var cr = (cn >> 16) & 255, cg = (cn >> 8) & 255, cb = cn & 255;
+          var lc = lum(cr, cg, cb) || 1;
+          var cells = species === "cat" ? [[6, 6], [6, 7]] : [[2, 4], [2, 5]];
+          var cell = Math.floor(img.width / 8);
+          cells.forEach(function(cc){
+            var px = cc[0] * cell, py = cc[1] * cell;
+            var d = ctx.getImageData(px + cell / 2, py + cell / 2, 1, 1).data;
+            var f = lum(d[0], d[1], d[2]) / lc;
+            var r = Math.min(255, Math.max(0, Math.round(cr * f)));
+            var g = Math.min(255, Math.max(0, Math.round(cg * f)));
+            var b = Math.min(255, Math.max(0, Math.round(cb * f)));
+            ctx.fillStyle = "rgb(" + r + "," + g + "," + b + ")";
+            ctx.fillRect(px, py, cell, cell);
+          });
+          var tex = new THREE.CanvasTexture(cv);
+          tex.flipY = false;
+          tex.colorSpace = THREE.SRGBColorSpace;
+          tex.needsUpdate = true;
+          T3.coatTex[key] = tex;
+          return tex;
+        }catch(e){ return null; }
+      }
+
       /* ---------------- 3D 宠物 ---------------- */
       function makePet(m){
         var tpl = T3.templates[m.species];
         if(!tpl) return;
         var g = tpl.scene.clone(true);
-        var fur = new THREE.Color(coatById(m.coat).fur);
+        var coatTex = recolorTexture(m.species, m.coat);
         g.traverse(function(o){
           if(o.isMesh){
             o.material = o.material.clone();
-            o.material.color = fur;
+            if(coatTex && o.material.map){
+              o.material.map = coatTex;
+              o.material.color = new THREE.Color(0xffffff);
+            }
           }
         });
         g.scale.setScalar(T3.petScale);
@@ -6898,6 +6967,169 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         m.tx = Math.min(92, Math.max(8, x));
         m.ty = Math.min(91, Math.max(57, y));
       }
+
+      /* ---------------- 障碍碰撞（百分比坐标，圆对 AABB 推出） ---------------- */
+      var OBSTACLES = {
+        classroom: [
+          { x:16.9, y:85.0, hx:7.2, hy:3.0 }, { x:50, y:86.6, hx:7.2, hy:3.0 }, { x:83.1, y:85.0, hx:7.2, hy:3.0 },
+          { x:32.1, y:68.2, hx:7.2, hy:3.0 }, { x:67.9, y:68.2, hx:7.2, hy:3.0 }
+        ],
+        playground: [
+          { x:7.2, y:60.3, hx:3.5, hy:3.0 }, { x:94.1, y:57.1, hx:3.4, hy:2.6 }
+        ],
+        cafeteria: [
+          { x:50, y:56.6, hx:30.3, hy:3.4 },
+          { x:18.3, y:85.0, hx:7.9, hy:6.1 }, { x:51.4, y:88.2, hx:7.9, hy:6.1 }, { x:84.5, y:84.5, hx:7.9, hy:6.1 }
+        ],
+        garden: [
+          { x:91.4, y:59.2, hx:3.5, hy:3.0 }, { x:5.9, y:58.2, hx:3.5, hy:3.0 },
+          { x:18.3, y:83.4, hx:7.6, hy:5.8 }, { x:80.3, y:88.7, hx:7.6, hy:5.8 }, { x:34.8, y:57.1, hx:7.6, hy:5.8 }
+        ]
+      };
+      function resolveObstacles(m){
+        var list = OBSTACLES[m.room];
+        if(list){
+          var r = 3;
+          for(var i = 0; i < list.length; i++){
+            var o = list[i];
+            var cx = Math.max(o.x - o.hx, Math.min(m.x, o.x + o.hx));
+            var cy = Math.max(o.y - o.hy, Math.min(m.y, o.y + o.hy));
+            var dx = m.x - cx, dy = m.y - cy;
+            var d2 = dx * dx + dy * dy;
+            if(d2 < r * r){
+              if(d2 > .0001){
+                var d = Math.sqrt(d2);
+                m.x = cx + dx / d * r; m.y = cy + dy / d * r;
+              } else {
+                var pl = m.x - (o.x - o.hx), pr = (o.x + o.hx) - m.x;
+                var pt = m.y - (o.y - o.hy), pb = (o.y + o.hy) - m.y;
+                var mn = Math.min(pl, pr, pt, pb);
+                if(mn === pl) m.x = o.x - o.hx - r;
+                else if(mn === pr) m.x = o.x + o.hx + r;
+                else if(mn === pt) m.y = o.y - o.hy - r;
+                else m.y = o.y + o.hy + r;
+              }
+            }
+          }
+        }
+        m.x = Math.min(92, Math.max(8, m.x));
+        m.y = Math.min(91, Math.max(57, m.y));
+      }
+
+      /* ---------------- 走路控制：键盘 + 虚拟摇杆 ---------------- */
+      var keys = { w:false, a:false, s:false, d:false, shift:false };
+      function keyField(code){
+        if(code === "KeyW" || code === "ArrowUp") return "w";
+        if(code === "KeyA" || code === "ArrowLeft") return "a";
+        if(code === "KeyS" || code === "ArrowDown") return "s";
+        if(code === "KeyD" || code === "ArrowRight") return "d";
+        return null;
+      }
+      window.addEventListener("keydown", function(ev){
+        if(!entered) return;
+        var t = ev.target;
+        if(t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+        if(ev.code === "ShiftLeft" || ev.code === "ShiftRight"){ keys.shift = true; return; }
+        var f = keyField(ev.code);
+        if(f){
+          keys[f] = true;
+          if(ev.code.indexOf("Arrow") === 0) ev.preventDefault();
+        }
+      });
+      window.addEventListener("keyup", function(ev){
+        if(ev.code === "ShiftLeft" || ev.code === "ShiftRight"){ keys.shift = false; return; }
+        var f = keyField(ev.code);
+        if(f) keys[f] = false;
+      });
+      window.addEventListener("blur", function(){ keys = { w:false, a:false, s:false, d:false, shift:false }; });
+
+      var joy = { x:0, y:0, mag:0, active:false, id:null };
+      var joyEl = document.getElementById("joy");
+      var joyKnob = document.getElementById("joyKnob");
+      function joySet(ev){
+        var r = joyEl.getBoundingClientRect();
+        var dx = ev.clientX - (r.left + r.width / 2), dy = ev.clientY - (r.top + r.height / 2);
+        var max = r.width / 2;
+        var d = Math.sqrt(dx * dx + dy * dy);
+        var m = Math.min(1, d / max);
+        var a = Math.atan2(dy, dx);
+        joy.x = Math.cos(a) * m; joy.y = Math.sin(a) * m; joy.mag = m;
+        if(joyKnob) joyKnob.style.transform = "translate(" + (Math.cos(a) * m * 32) + "px," + (Math.sin(a) * m * 32) + "px)";
+      }
+      if(joyEl){
+        joyEl.addEventListener("pointerdown", function(ev){
+          joy.active = true; joy.id = ev.pointerId;
+          try{ joyEl.setPointerCapture(ev.pointerId); }catch(e){}
+          joySet(ev); ev.preventDefault();
+        });
+        joyEl.addEventListener("pointermove", function(ev){
+          if(joy.active && ev.pointerId === joy.id) joySet(ev);
+        });
+        var joyEnd = function(ev){
+          if(ev.pointerId !== joy.id) return;
+          joy.active = false; joy.x = 0; joy.y = 0; joy.mag = 0;
+          if(joyKnob) joyKnob.style.transform = "";
+        };
+        joyEl.addEventListener("pointerup", joyEnd);
+        joyEl.addEventListener("pointercancel", joyEnd);
+      }
+      window.addEventListener("touchstart", function(){ document.body.classList.add("touch"); }, { once:true, passive:true });
+
+      function inputVec(){
+        var x = 0, y = 0;
+        if(keys.w) y -= 1;
+        if(keys.s) y += 1;
+        if(keys.a) x -= 1;
+        if(keys.d) x += 1;
+        if(joy.active && joy.mag > .12){ x += joy.x; y += joy.y; }
+        var m = Math.sqrt(x * x + y * y);
+        if(m > 1){ x /= m; y /= m; m = 1; }
+        return { x:x, y:y, mag:m };
+      }
+      /* 我自己的移动：直接写 x/y（走 14 / 跑 26 单位每秒），不走 stepPet 的目标滑行 */
+      function stepMe(dt){
+        var p = me.p3;
+        if(!p) return;
+        var v = inputVec();
+        var ctrl = v.mag > .12;
+        if(ctrl){
+          var run = keys.shift || joy.mag > .85;
+          me.running = run;
+          var d = Math.max(v.mag, .0001);
+          var ux = v.x / d, uy = v.y / d;
+          var sp = (run ? 26 : 14) * Math.min(1, v.mag);
+          me.x += ux * sp * dt;
+          me.y += uy * sp * dt;
+          me.x = Math.min(92, Math.max(8, me.x));
+          me.y = Math.min(91, Math.max(57, me.y));
+          resolveObstacles(me);
+          me.tx = me.x; me.ty = me.y;
+          me.face = Math.atan2(ux * .145, uy * .19);
+          me.moving = true;
+          me.ctrlWas = true;
+          netMove(true);
+        } else {
+          if(me.ctrlWas){ me.ctrlWas = false; netMove(false); }
+          me.running = false;
+          var tx = (me.tx != null ? me.tx : me.x), ty = (me.ty != null ? me.ty : me.y);
+          var dx = tx - me.x, dy = ty - me.y;
+          var dist = Math.sqrt(dx * dx + dy * dy);
+          me.moving = dist > .6;
+          if(me.moving){
+            var st = 9 * dt;
+            if(st >= dist){ me.x = tx; me.y = ty; }
+            else { me.x += dx / dist * st; me.y += dy / dist * st; }
+            me.face = Math.atan2(dx * .145, dy * .19);
+          }
+        }
+        p.group.position.set(petWorldX(me), 0, petWorldZ(me));
+        if(me.face != null){
+          var rd = me.face - p.group.rotation.y;
+          while(rd > Math.PI) rd -= Math.PI * 2;
+          while(rd < -Math.PI) rd += Math.PI * 2;
+          p.group.rotation.y += rd * Math.min(1, dt * 10);
+        }
+      }
       function playAnim(m, name, ms){
         m.animClip = name;
         m.animUntil = performance.now() + (ms || 3000);
@@ -6929,7 +7161,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
       }
       function desiredClip(m){
         if(m.animClip && performance.now() < m.animUntil) return m.animClip;
-        if(m.moving) return m.state === "play" ? "run" : "walk";
+        if(m.moving) return (m.running || m.state === "play") ? "run" : "walk";
         return STATE_CLIP[m.state] || "idle";
       }
       function applyClip(m){
@@ -6951,13 +7183,16 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         var dist = Math.sqrt(dx * dx + dy * dy);
         m.moving = dist > .6;
         if(m.moving){
-          var sp = 9 * dt;
+          var spd = 9;
+          if(m.isRemote) spd = Math.max(9, Math.min(46, dist * 6));
+          var sp = spd * dt;
           if(sp >= dist){ m.x = tx; m.y = ty; }
           else { m.x += dx / dist * sp; m.y += dy / dist * sp; }
           if(Math.abs(dx) > .2) m.dir = dx < 0 ? -1 : 1;
         }
         p.group.position.set(petWorldX(m), 0, petWorldZ(m));
         var targetRot = m.dir < 0 ? -Math.PI / 2 : Math.PI / 2;
+        if(m.isRemote && dist > .6) targetRot = Math.atan2(dx * .145, dy * .19);
         var d = targetRot - p.group.rotation.y;
         while(d > Math.PI) d -= Math.PI * 2;
         while(d < -Math.PI) d += Math.PI * 2;
@@ -6981,6 +7216,10 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         if(wrap && (wrap.clientWidth !== T3.lastW || wrap.clientHeight !== T3.lastH)) resizeGL();
         var dt = Math.min(.05, T3.clock.getDelta());
         var t = T3.clock.elapsedTime;
+        if(entered){
+          var ccx = ROOM3D_X[currentRoom];
+          T3.focusTX = Math.max(ccx - 3.5, Math.min(ccx + 3.5, petWorldX(me)));
+        }
         T3.focusX += (T3.focusTX - T3.focusX) * Math.min(1, dt * 3.4);
         T3.camera.position.set(T3.focusX, 12.2, 13.8);
         T3.camera.lookAt(T3.focusX, .2, -.8);
@@ -6998,7 +7237,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
           var vis = m.room === currentRoom;
           m.p3.group.visible = vis;
           if(!vis){ m.p3.label.style.display = "none"; continue; }
-          stepPet(m, dt);
+          if(m.isMe) stepMe(dt); else stepPet(m, dt);
           applyClip(m);
           m.p3.mixer.update(dt);
           if(m.p3.tail){
@@ -7121,11 +7360,38 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
           box.appendChild(b);
         });
       }
+      /* 通用动作：哪个房间都能做 */
+      var COMMON_ACTIONS = [
+        { label:"举爪", anim:"gesture-positive", bubble:"举爪！这道题我会！", act:"举爪" },
+        { label:"摇头", anim:"gesture-negative", bubble:"不要不要~", act:"摇头" },
+        { label:"吃饭", anim:"eat", bubble:"吧唧吧唧…开饭啦", act:"吃饭", state:"eat" },
+        { label:"跳舞", anim:"dance", bubble:"扭起来，摇尾巴~", act:"跳舞", state:"play" }
+      ];
+      function renderCommonActions(){
+        var box = $("#commonActions");
+        if(!box) return;
+        box.innerHTML = "";
+        COMMON_ACTIONS.forEach(function(a){
+          var b = document.createElement("button");
+          b.type = "button"; b.className = "act-btn"; b.textContent = a.label;
+          b.addEventListener("click", function(){
+            me.action = a.act;
+            if(a.state) setState(me, a.state, 4000);
+            playAnim(me, a.anim, 3400);
+            showBubble(me, a.bubble, 2600);
+            if(a.anim === "dance") popHeart(me);
+            netAction(a.label, a.anim);
+            renderRoster();
+          });
+          box.appendChild(b);
+        });
+      }
       function switchRoom(room){
         currentRoom = room; me.room = room;
         $$(".tab").forEach(function(t){ t.setAttribute("aria-selected", t.getAttribute("data-room") === room ? "true" : "false"); });
         T3.focusTX = ROOM3D_X[room];
         me.x = rand(30,70); me.y = rand(64,86);
+        resolveObstacles(me);
         placePet(me);
         renderActions(); updateCounts(); renderRoster();
         netRoomChanged();
@@ -7202,12 +7468,12 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         if(!classmates.length) return;
         var m = pick(classmates);
         var r = Math.random();
-        if(r < .30){
+        if(r < .45){
           mateWander(m);
-        } else if(r < .52){
+        } else if(r < .65){
           var line = m.species === "cat" ? pick(CAT_LINES) : pick(DOG_LINES);
           if(m.room === currentRoom) showBubble(m, line, rand(2200, 3200));
-        } else if(r < .72){
+        } else if(r < .85){
           m.action = pick(ROOMS[m.room].actions);
           var st = "idle";
           if(/打盹|晒太阳|看云/.test(m.action)) st = "sleep";
@@ -7218,15 +7484,16 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
           if(Math.random() < .35){
             feed("<b>" + m.name + "</b> 在" + ROOMS[m.room].name + m.action);
           }
-        } else if(r < .82){
+        } else if(r < .93){
           var old = m.room;
           var next = pick(ROOM_KEYS.filter(function(k){ return k !== old; }));
           m.room = next; m.x = rand(14,86); m.y = rand(62,89);
           m.action = pick(ROOMS[next].actions);
+          resolveObstacles(m);
           placePet(m);
           feed("<b>" + m.name + "</b> 从" + ROOMS[old].name + "跑去" + ROOMS[next].name + "了");
           updateCounts();
-        } else if(r < .90){
+        } else if(r < .97){
           if(m.room === currentRoom && Math.random() < .6) popHeart(m);
           mateWander(m);
         }
@@ -7260,8 +7527,13 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         return { name: me.name, species: me.species, coat: me.coat, room: me.room,
                  x: Math.round(me.x), y: Math.round(me.y), action: me.action || "" };
       }
+      var netTrackLast = 0;
       function netTrack(){
-        if(net.on && net.channel){ try{ net.channel.track(myPresence()); }catch(e){} }
+        if(!net.on || !net.channel) return;
+        var now = Date.now();
+        if(netTrackLast && now - netTrackLast < 10000) return;
+        netTrackLast = now;
+        try{ net.channel.track(myPresence()); }catch(e){}
       }
       function netSend(payload){
         if(!net.on || !net.channel) return;
@@ -7280,6 +7552,18 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
       function netRoomChanged(){
         netSend({ kind:"room", room: me.room });
         netTrack();
+      }
+      /* 走路位置同步：移动中节流 150ms 广播，停下补发一次并刷新 Presence */
+      var netMoveLast = 0;
+      function netMove(moving){
+        var now = performance.now();
+        if(moving && now - netMoveLast < 150) return;
+        netMoveLast = now;
+        netSend({ kind:"move", room: me.room,
+                  x: Math.round(me.x * 10) / 10, y: Math.round(me.y * 10) / 10,
+                  moving: !!moving, running: !!me.running,
+                  anim: moving ? (me.running ? "run" : "walk") : "idle" });
+        if(!moving) netTrack();
       }
       function remoteById(id){
         for(var i = 0; i < remotes.length; i++) if(remotes[i].id === id) return remotes[i];
@@ -7313,7 +7597,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
               r.room = meta.room;
               r.x = +meta.x || 50; r.y = +meta.y || 76;
               placePet(r);
-            } else if(typeof meta.x === "number" && (Math.abs(meta.x - r.x) > 4 || Math.abs(meta.y - r.y) > 4)){
+            } else if(typeof meta.x === "number" && (Math.abs(meta.x - r.x) > 1.5 || Math.abs(meta.y - r.y) > 1.5)){
               movePet(r, meta.x, meta.y);
             }
           }
@@ -7333,6 +7617,24 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         if(!r) return;
         if(p.kind === "speak"){
           showBubble(r, String(p.text || (r.species === "cat" ? "喵~" : "汪汪！")).slice(0, 24), 2600, true);
+        } else if(p.kind === "move"){
+          r.lastNet = performance.now();
+          if(p.room && ROOMS[p.room] && r.room !== p.room){
+            r.room = p.room;
+            if(typeof p.x === "number" && typeof p.y === "number"){ r.x = p.x; r.y = p.y; }
+            placePet(r);
+            updateCounts(); renderRoster();
+          } else if(typeof p.x === "number" && typeof p.y === "number"){
+            movePet(r, p.x, p.y);
+          }
+          r.running = !!p.running;
+          if(!p.moving) r.running = false;
+        } else if(p.kind === "room"){
+          if(p.room && ROOMS[p.room] && r.room !== p.room){
+            r.room = p.room;
+            placePet(r);
+            updateCounts(); renderRoster();
+          }
         } else if(p.kind === "action"){
           if(p.label) r.action = String(p.label).slice(0, 12);
           if(p.anim) playAnim(r, String(p.anim), 3200);
@@ -7358,9 +7660,10 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
             if(status === "SUBSCRIBED"){ net.on = true; netTrack(); syncRemotes(); }
             else if(status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED"){ net.on = false; }
           });
-          /* 真人同学在我这边也轻轻走动，看起来更热闹 */
+          /* 真人同学在我这边也轻轻走动，看起来更热闹（但有实时位置更新时不抢） */
           setInterval(function(){
             remotes.forEach(function(r){
+              if(r.lastNet && performance.now() - r.lastNet < 8000) return;
               if(!r.moving && Math.random() < .35){
                 movePet(r, Math.min(90, Math.max(10, r.x + rand(-13, 13))),
                            Math.min(90, Math.max(58, r.y + rand(-6, 6))));
@@ -7385,6 +7688,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         me.room = "classroom"; me.x = 50; me.y = 76;
         renderPet(me);
         switchRoom("classroom");
+        renderCommonActions();
         renderSchedule(); updateCounts(); renderRoster();
         feed("<b>" + me.name + "</b> 入学啦，是一只" + (me.species === "cat" ? "小猫" : "小狗") + "同学");
         var greeter = pick(classmates);
