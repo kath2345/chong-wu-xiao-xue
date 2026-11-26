@@ -8750,19 +8750,19 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
       /* ---------------- 房间 & 动作 ---------------- */
       var ACTIONS = {
         classroom: [
-          { label:"认真听课", anim:"idle", run:function(){ setState(me,"study",4200); me.action="认真听课"; showBubble(me, pick(["（认真记笔记）","原来 1+1 = 两根小鱼干","听懂啦！"]), 2800); } },
-          { label:"举爪提问", anim:"gesture-positive", run:function(){ me.action="举爪提问"; showBubble(me, pick(["老师，罐罐什么时候发？","老师，我想去操场玩","这道题我会，我真会！"]), 3000); reactNearby(); } },
-          { label:"偷偷打盹", anim:"static", run:function(){ setState(me,"sleep",4600); me.action="偷偷打盹"; showBubble(me, "呼…呼…", 2600); } }
+          { label:"认真听课", seated:true, anim:"idle", run:function(){ setState(me,"study",4200); me.action="认真听课"; showBubble(me, pick(["（认真记笔记）","原来 1+1 = 两根小鱼干","听懂啦！"]), 2800); } },
+          { label:"举爪提问", seated:true, anim:"gesture-positive", run:function(){ me.action="举爪提问"; showBubble(me, pick(["老师，罐罐什么时候发？","老师，我想去操场玩","这道题我会，我真会！"]), 3000); reactNearby(); } },
+          { label:"偷偷打盹", seated:true, anim:"static", run:function(){ setState(me,"sleep",4600); me.action="偷偷打盹"; showBubble(me, "呼…呼…", 2600); } }
         ],
         playground: [
           { label:"追皮球", anim:"run", run:function(){ setState(me,"play",4200); me.action="追皮球"; movePet(me, rand(14,86), rand(60,90)); showBubble(me, me.species==="cat" ? "喵！球别跑！" : "汪汪！追上啦！", 2600); } },
-          { label:"晒太阳", anim:"static", run:function(){ setState(me,"sleep",4600); me.action="晒太阳"; showBubble(me, "好暖和，肚皮都晒热了", 3000); } },
+          { label:"晒太阳", seated:true, anim:"static", run:function(){ setState(me,"sleep",4600); me.action="晒太阳"; showBubble(me, "好暖和，肚皮都晒热了", 3000); } },
           { label:"草地打滚", anim:"dance", run:function(){ setState(me,"play",4200); me.action="草地打滚"; movePet(me, rand(14,86), rand(62,90)); showBubble(me, "打滚中——停不下来！", 2800); popHeart(me); } }
         ],
         cafeteria: [
-          { label:"吃罐罐", anim:"eat", run:function(){ setState(me,"eat",4600); me.action="吃罐罐"; showBubble(me, "吧唧吧唧…太好吃了！", 3000); gainTreat(1); } },
-          { label:"喝牛奶", anim:"eat", run:function(){ setState(me,"eat",3800); me.action="喝牛奶"; showBubble(me, "咕嘟咕嘟，胡子都沾上奶了", 3000); } },
-          { label:"排队等加餐", anim:"idle", run:function(){ me.action="排队等加餐"; showBubble(me, "排队中…前面还有 3 只", 3000); setTimeout(function(){ showBubble(me, "到我啦到我啦！", 2400); popHeart(me); }, 3100); } }
+          { label:"吃罐罐", seated:true, anim:"eat", run:function(){ setState(me,"eat",4600); me.action="吃罐罐"; showBubble(me, "吧唧吧唧…太好吃了！", 3000); gainTreat(1); } },
+          { label:"喝牛奶", seated:true, anim:"eat", run:function(){ setState(me,"eat",3800); me.action="喝牛奶"; showBubble(me, "咕嘟咕嘟，胡子都沾上奶了", 3000); } },
+          { label:"排队等加餐", seated:true, anim:"idle", run:function(){ me.action="排队等加餐"; showBubble(me, "排队中…前面还有 3 只", 3000); setTimeout(function(){ showBubble(me, "到我啦到我啦！", 2400); popHeart(me); }, 3100); } }
         ],
         garden: [
           { label:"闻花花", anim:"gesture-positive", run:function(){ me.action="闻花花"; movePet(me, rand(12,88), rand(60,90)); showBubble(me, "阿嚏——花花好香", 2800); } },
@@ -8771,15 +8771,15 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         ],
         karaoke: [
           { label:"唱歌", anim:"dance", run:function(){ setState(me,"play",4600); me.action="唱歌"; showBubble(me, pick(["喵呜~ 啦啦啦~","汪汪！这首我会唱！","啦~ 啦啦~ 好好听"]), 3000); popNote(me); setTimeout(function(){ popNote(me); }, 500); } },
-          { label:"点歌", anim:"gesture-positive", run:function(){ me.action="点歌"; ktvOpen(); showBubble(me, "点歌台打开啦~", 2200); } },
+          { label:"点歌", seated:true, anim:"gesture-positive", run:function(){ me.action="点歌"; ktvOpen(); showBubble(me, "点歌台打开啦~", 2200); } },
           { label:"跳舞", anim:"dance", run:function(){ setState(me,"play",4200); me.action="跳舞"; showBubble(me, "灯球转起来，扭起来~", 2800); popHeart(me); } }
         ],
         cinema: [
-          { label:"看电影", anim:"static", run:function(){ setState(me,"sleep",8000); me.action="看电影"; showBubble(me, "嘘——电影开始了", 3000); } },
-          { label:"吃爆米花", anim:"eat", run:function(){ setState(me,"eat",3800); me.action="吃爆米花"; showBubble(me, "咔嚓咔嚓，真香", 3000); } },
-          { label:"小声讨论", anim:"idle", run:function(){ me.action="小声讨论"; showBubble(me, "刚才那只猫好勇敢", 2800); reactNearby(); } },
-          { label:"换片", anim:"idle", run:function(){ var t = nextCinema(); me.action = "换片"; showBubble(me, "换片啦：" + t, 2600); } },
-          { label:function(){ return cinemaSoundLabel(); }, anim:"idle", refresh:true, run:function(){ toggleCinemaSound(); } }
+          { label:"看电影", seated:true, anim:"static", run:function(){ setState(me,"sleep",8000); me.action="看电影"; showBubble(me, "嘘——电影开始了", 3000); } },
+          { label:"吃爆米花", seated:true, anim:"eat", run:function(){ setState(me,"eat",3800); me.action="吃爆米花"; showBubble(me, "咔嚓咔嚓，真香", 3000); } },
+          { label:"小声讨论", seated:true, anim:"idle", run:function(){ me.action="小声讨论"; showBubble(me, "刚才那只猫好勇敢", 2800); reactNearby(); } },
+          { label:"换片", seated:true, anim:"idle", run:function(){ var t = nextCinema(); me.action = "换片"; showBubble(me, "换片啦：" + t, 2600); } },
+          { label:function(){ return cinemaSoundLabel(); }, anim:"idle", seated:true, refresh:true, run:function(){ toggleCinemaSound(); } }
         ]
       };
       function renderActions(){
@@ -8795,7 +8795,9 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
           var lb = (typeof a.label === "function") ? a.label() : a.label;
           b.innerHTML = '<span class="a-ico">' + lb.charAt(0) + '</span><span>' + lb + '</span>';
           b.addEventListener("click", function(){
-            standUp();
+            /* 坐着能干的动作（听课、看电影、吃爆米花、举爪…）保持坐着；
+               只有要站起来/走动的动作（跳舞、追皮球…）才先站起来。 */
+            if(!a.seated) standUp();
             a.run();
             if(a.anim) playAnim(me, a.anim, 3400);
             netAction(lb, a.anim);
@@ -8807,9 +8809,9 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
       }
       /* 通用动作：哪个房间都能做 */
       var COMMON_ACTIONS = [
-        { label:"举爪", anim:"gesture-positive", bubble:"举爪！这道题我会！", act:"举爪" },
-        { label:"摇头", anim:"gesture-negative", bubble:"不要不要~", act:"摇头" },
-        { label:"吃饭", anim:"eat", bubble:"吧唧吧唧…开饭啦", act:"吃饭", state:"eat" },
+        { label:"举爪", seated:true, anim:"gesture-positive", bubble:"举爪！这道题我会！", act:"举爪" },
+        { label:"摇头", seated:true, anim:"gesture-negative", bubble:"不要不要~", act:"摇头" },
+        { label:"吃饭", seated:true, anim:"eat", bubble:"吧唧吧唧…开饭啦", act:"吃饭", state:"eat" },
         { label:"跳舞", anim:"dance", bubble:"扭起来，摇尾巴~", act:"跳舞", state:"play" }
       ];
       function renderCommonActions(){
@@ -8821,7 +8823,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
           b.type = "button"; b.className = "act-btn";
           b.innerHTML = '<span class="a-ico">' + a.label.charAt(0) + '</span><span>' + a.label + '</span>';
           b.addEventListener("click", function(){
-            standUp();
+            if(!a.seated) standUp();
             me.action = a.act;
             if(a.state) setState(me, a.state, 4000);
             playAnim(me, a.anim, 3400);
