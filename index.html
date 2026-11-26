@@ -265,6 +265,7 @@
       .ktv-fallback a{ color:var(--coral-dark); font-weight:700; }
       .ktv-open{ font-size:.82rem; margin:8px 0 0; text-align:right; }
       .ktv-open a{ color:var(--ink-soft); }
+      .ktv-tip{ font-size:.82rem; color:var(--ink-soft); margin:10px 0 0; }
       #ktvFrame{ width:100%; height:430px; border:0; border-radius:14px; background:#111; display:block; }
 
       .tabs{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:12px; }
@@ -543,7 +544,7 @@
             <h2>点歌台</h2>
             <button class="icon-btn" id="ktvClose" type="button" title="关闭">✕</button>
           </div>
-          <p class="ktv-sub" id="ktvSub">正在放：周杰伦《叶惠美》歌单 · 播放走网易云正版流</p>
+          <p class="ktv-sub" id="ktvSub">正在放：轻音乐歌单《治愈·温柔·放松》· 播放走网易云正版流</p>
           <div class="ktv-row">
             <input id="ktvInput" type="text" placeholder="粘贴网易云歌曲/歌单链接，或歌曲数字 ID" autocomplete="off" />
             <button class="ktv-go" id="ktvGo" type="button">换歌</button>
@@ -551,8 +552,9 @@
           <p class="ktv-hint" id="ktvHint">换歌后会自动播放，也会记住，下次打开还是它。</p>
           <p class="ktv-load" id="ktvLoad" hidden>正在打开播放器…</p>
           <iframe id="ktvFrame" title="网易云音乐播放器" allow="autoplay; encrypted-media" frameborder="0"></iframe>
-          <p class="ktv-open"><a id="ktvOpenLink" href="https://music.163.com/playlist?id=2914592677" target="_blank" rel="noopener">在网易云打开 ↗</a></p>
-          <p class="ktv-fallback" id="ktvFallback" hidden>播放器打不开？<a id="ktvFallbackLink" href="https://music.163.com/playlist?id=2914592677" target="_blank" rel="noopener">点这里去网易云听</a></p>
+          <p class="ktv-tip">没声音？先看手机是不是静音了，再点播放键试试。</p>
+          <p class="ktv-open"><a id="ktvOpenLink" href="https://music.163.com/playlist?id=10050217985" target="_blank" rel="noopener">在网易云打开 ↗</a></p>
+          <p class="ktv-fallback" id="ktvFallback" hidden>播放器打不开？<a id="ktvFallbackLink" href="https://music.163.com/playlist?id=10050217985" target="_blank" rel="noopener">点这里去网易云听</a></p>
         </div>
       </div>
     </div>
@@ -6810,7 +6812,9 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
       });
 
       /* ---------------- K歌房点歌台（网易云官方外链播放器，走正版流；不存 MP3） ---------------- */
-      var KTV_DEFAULT = { type:"0", id:"2914592677" }; /* 周杰伦《叶惠美》歌单（11 首，含晴天） */
+      var KTV_DEFAULT = { type:"0", id:"10050217985" }; /* 轻音乐歌单《治愈·温柔·放松》（10 首，月亮）：
+         网易云音频地址 API 实测 10/10 能拿到 mp3，真机点播放进度会走；周杰伦《叶惠美》那几首
+         匿名拿不到音频地址，点播放进度一直停在 0:00，所以默认歌单换掉（换歌框仍可贴任何链接）。 */
       var KTV_LS_KEY = "petSchoolKtv";
       /* 网易云外链播放器按 UA 分流：手机 UA 请求桌面版会被 302 到 http://…/m/outchain/player，
          https 父页面嵌 http 子页面会被浏览器当混合内容拦掉（黑框无声）；桌面 UA 请求 /m/ 版
@@ -6882,14 +6886,21 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
       function ktvSave(t){
         try{ window.localStorage.setItem(KTV_LS_KEY, JSON.stringify(t)); }catch(e){}
       }
-      function ktvCurrent(){ return ktvSaved() || KTV_DEFAULT; }
+      /* 旧默认歌单 2914592677（周杰伦《叶惠美》）在网易云外链播放器里匿名拿不到音频地址，
+         点播放进度一直停在 0:00；已经存过它的手机要迁移到新默认歌单，否则换默认也救不了。 */
+      var KTV_OLD_DEFAULT_ID = "2914592677";
+      function ktvCurrent(){
+        var sv = ktvSaved();
+        if(sv && sv.type === "0" && sv.id === KTV_OLD_DEFAULT_ID){ sv = KTV_DEFAULT; ktvSave(sv); }
+        return sv || KTV_DEFAULT;
+      }
       function ktvDisplay(t){
         return "https://music.163.com/" + (t.type === "0" ? "playlist" : "song") + "?id=" + t.id;
       }
       function ktvShowCurrent(t){
         var sub = $("#ktvSub");
         if(!sub) return;
-        if(t.type === "0" && t.id === "2914592677") sub.textContent = "正在放：周杰伦《叶惠美》歌单 · 播放走网易云正版流";
+        if(t.type === "0" && t.id === "10050217985") sub.textContent = "正在放：轻音乐歌单《治愈·温柔·放松》· 播放走网易云正版流";
         else sub.textContent = "正在放：" + (t.type === "0" ? "歌单" : "歌曲") + " ID " + t.id + " · 播放走网易云正版流";
         var a = $("#ktvOpenLink"); if(a) a.href = ktvDisplay(t);
       }
@@ -7066,8 +7077,8 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
       }
       function bench3(x, z, ry){
         var g = new THREE.Group(); g.position.set(x, 0, z); if(ry) g.rotation.y = ry; T3.scene.add(g);
-        box3(2.6, .14, .7, 0x8a5a30, 0, .5, 0, g);
-        box3(2.6, .5, .12, 0x8a5a30, 0, .95, -.32, g);
+        box3(2.6, .14, 1.0, 0x8a5a30, 0, .5, 0, g); /* 椅面加深到 1.0，坐下后身体不至于半个悬空 */
+        box3(2.6, .5, .12, 0x8a5a30, 0, .95, -.47, g); /* 椅背后移，坐下后身体与椅背留出空隙 */
         box3(.14, .5, .6, 0x6a4526, -1.1, .25, 0, g);
         box3(.14, .5, .6, 0x6a4526, 1.1, .25, 0, g);
       }
@@ -7590,9 +7601,19 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         if(T3.failed || !T3.ok) return;
         if(T3.pending.indexOf(m) < 0) T3.pending.push(m);
       }
+      /* 坐下时的 3D 落点：坐上椅子时把整组抬到椅面高、往朝向前移，
+         身体底贴椅面、后沿不顶椅背；走路/原地坐下时 lift/fwd 都是 0。
+         我、真人、模拟同学都走 stepPet/placePet，所以这里一处改，全员生效。 */
+      function placePetGroup(m){
+        var p = m.p3; if(!p) return;
+        var lift = 0, fwd = 0;
+        if(m.sitting && m.seatId){ var st = seatById(m.seatId); if(st){ lift = st.lift || 0; fwd = st.fwd || 0; } }
+        var fx = Math.sin(m.face || 0), fz = Math.cos(m.face || 0);
+        p.group.position.set(petWorldX(m) + fx * fwd, lift, petWorldZ(m) + fz * fwd);
+      }
       function placePet(m){
         m.tx = m.x; m.ty = m.y;
-        if(m.p3) m.p3.group.position.set(petWorldX(m), 0, petWorldZ(m));
+        if(m.p3) placePetGroup(m);
       }
       function removePet(m){
         if(m.p3){
@@ -7730,7 +7751,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
           m.noCrossUntil = performance.now() + 600;
           if(m.trip && m.trip.room === e.to){ m.tx = m.trip.x; m.ty = m.trip.y; }
           else { m.tx = m.x; m.ty = m.y; }
-          if(m.p3) m.p3.group.position.set(petWorldX(m), 0, petWorldZ(m));
+          if(m.p3) placePetGroup(m);
           if(m.isMe){
             setRoomUI();
             feed("<b>" + escapeHtml(m.name) + "</b> 从" + oldName + "走到了" + ROOMS[e.to].name);
@@ -7894,7 +7915,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         }
         if(me.seatTarget && !me.moving && !me.sitting) arriveAtSeat();
         else if(me.seatTarget && me.moving) netMove(true);
-        p.group.position.set(petWorldX(me), 0, petWorldZ(me));
+        placePetGroup(me);
         if(me.face != null){
           var rd = me.face - p.group.rotation.y;
           while(rd > Math.PI) rd -= Math.PI * 2;
@@ -7920,9 +7941,16 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
          0=南，π/2=东/银幕·荷花池，-π/2=西/舞台）。
          电影房 12 张红椅、教室 20 个坐垫、K歌房 6 个圆凳、食堂 4 条长凳、
          花园 2 条长椅、院子 2 条长椅，共 46 个座位。 */
+      /* 坐下抬升/前移：实测坐姿（static）身体盒高 1.12、后沿离组原点 0.73、前沿 0.46；
+         lift=椅面高（身体底贴椅面不下陷），fwd=往朝向移（身体后沿不顶椅背）。
+         电影房椅面 0.55、椅背前沿在中心后 0.66；坐垫面 0.25；圆凳面 0.56；
+         长凳面 0.57、椅面已加深到 1.0、椅背前沿在中心后 0.41。 */
+      var SEAT_POSE = { cinema:{lift:.55,fwd:.15}, classroom:{lift:.25,fwd:.10}, karaoke:{lift:.56,fwd:.15},
+                        cafeteria:{lift:.57,fwd:.40}, garden:{lift:.57,fwd:.40}, playground:{lift:.57,fwd:.40} };
       var SEATS = (function(){
         var list = [];
-        function add(room, x, y, face){ list.push({ id:room + "-" + list.length, room:room, x:x, y:y, face:face }); }
+        function add(room, x, y, face){ var sp = SEAT_POSE[room] || {lift:0,fwd:0};
+          list.push({ id:room + "-" + list.length, room:room, x:x, y:y, face:face, lift:sp.lift, fwd:sp.fwd }); }
         [27.8, 44.4, 61.1].forEach(function(sx){
           [63.9, 70.6, 77.2, 83.9].forEach(function(sy){ add("cinema", sx, sy, Math.PI / 2); });
         });
@@ -8123,7 +8151,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
           m.sitting = true; m.state = "sit"; m.face = st.face; m.seatId = st.id;
           m.animClip = null; m.animUntil = 0;
         }
-        p.group.position.set(petWorldX(m), 0, petWorldZ(m));
+        placePetGroup(m);
         if(m.face != null){
           var d = m.face - p.group.rotation.y;
           while(d > Math.PI) d -= Math.PI * 2;
