@@ -266,6 +266,24 @@
       .ktv-open{ font-size:.82rem; margin:8px 0 0; text-align:right; }
       .ktv-open a{ color:var(--ink-soft); }
       .ktv-tip{ font-size:.82rem; color:var(--ink-soft); margin:10px 0 0; }
+      /* 迷你播放条：点歌台关了、音乐还在放时浮在动作条上方右侧，不挡摇杆和动作按钮 */
+      .ktv-mini{
+        position:absolute; right:12px; bottom:132px; z-index:30;
+        display:flex; align-items:center; gap:6px; max-width:calc(100vw - 132px);
+        background:rgba(20,16,12,.72); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+        border:1px solid rgba(255,255,255,.25); border-radius:999px; padding:6px 6px 6px 12px;
+        color:#fff; box-shadow:0 6px 18px rgba(0,0,0,.3);
+      }
+      .ktv-mini[hidden]{ display:none; }
+      .ktv-mini-open{
+        border:none; background:transparent; color:#fff; font-family:inherit; font-size:.86rem;
+        font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+        padding:2px 4px; cursor:pointer; min-width:0;
+      }
+      .ktv-mini-stop{
+        flex:none; border:none; border-radius:999px; padding:5px 12px; cursor:pointer;
+        background:var(--coral); color:#fff; font-family:"ZCOOL KuaiLe",sans-serif; font-size:.9rem;
+      }
       #ktvFrame{ width:100%; height:430px; border:0; border-radius:14px; background:#111; display:block; }
 
       .tabs{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:12px; }
@@ -302,6 +320,7 @@
       .roster-head{ display:flex; align-items:baseline; gap:12px; margin:20px 2px 12px; flex-wrap:wrap; }
       .roster-head h2{ font-family:"ZCOOL KuaiLe",sans-serif; font-size:1.5rem; margin:0; }
       .roster-head span{ color:var(--ink-soft); font-size:.9rem; }
+      .real-count{ margin:2px 2px 12px; font-size:.95rem; font-weight:700; }
       .roster{ display:grid; grid-template-columns:repeat(auto-fill,minmax(158px,1fr)); gap:12px; }
       .mate{
         background:var(--card); border:1.5px solid var(--line); border-radius:16px; padding:12px 12px 10px;
@@ -530,6 +549,7 @@
             <h2>全校同学</h2>
             <span>点名啦——大家都在学校里，各忙各的</span>
           </div>
+          <p class="real-count" id="realCount">真人 1 人在线</p>
           <div class="roster" id="roster"></div>
           <p class="foot">宠物小学 · 放学别跑太快，记得跟同学说再见</p>
           <div style="text-align:center; margin-top:14px;">
@@ -556,6 +576,10 @@
           <p class="ktv-open"><a id="ktvOpenLink" href="https://music.163.com/playlist?id=10050217985" target="_blank" rel="noopener">在网易云打开 ↗</a></p>
           <p class="ktv-fallback" id="ktvFallback" hidden>播放器打不开？<a id="ktvFallbackLink" href="https://music.163.com/playlist?id=10050217985" target="_blank" rel="noopener">点这里去网易云听</a></p>
         </div>
+      </div>
+      <div id="ktvMini" class="ktv-mini" hidden>
+        <button class="ktv-mini-open" id="ktvMiniOpen" type="button">♪ 正在放：<span id="ktvMiniName">轻音乐歌单《治愈·温柔·放松》</span></button>
+        <button class="ktv-mini-stop" id="ktvMiniStop" type="button">停</button>
       </div>
     </div>
 
@@ -6832,11 +6856,14 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
       /* 播放器加载看门狗：文档一提交就算“到了”，不用等 load 事件
          （网易云的 CSS 常常拖很久，load 事件来得晚不代表没在播；
          跨域文档提交后 contentDocument 会变成 null，提交前还是能读到的
-         about:blank，所以每 2 秒探一次；关面板时会先切回 about:blank，
-         重开时探针不会把旧文档误认成新文档）。
-         30 秒都没提交（混合内容被拦、网络挂起），先换另一版 URL 再试一次；
-         再 30 秒还没提交，就显示“去网易云听”兜底链接。 */
+         about:blank，所以每 2 秒探一次。设新 src 前先回一次 about:blank，
+         探针才能认出新文档的提交——旧文档跨域，contentDocument 本来就是
+         null，不回空白页会被误认成新文档到了。
+         关面板不再切 about:blank（音乐要继续放），看门狗也不清：播放器还
+         在就不用重探。30 秒都没提交（混合内容被拦、网络挂起），先换另一版
+         URL 再试一次；再 30 秒还没提交，就显示“去网易云听”兜底链接。 */
       var ktvLoadTimer = null, ktvTriedAlt = false, ktvNavCheck = null;
+      var ktvLoaded = false, ktvLoadedId = ""; /* 播放器是否已载入、载入的是哪个歌单/歌曲 */
       function ktvShowLoad(on){ var el = $("#ktvLoad"); if(el) el.hidden = !on; }
       function ktvShowFallback(on){
         var el = $("#ktvFallback"); if(!el) return;
@@ -6850,6 +6877,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
       function ktvMarkLoaded(){
         ktvClearWatchdog(); ktvShowLoad(false); ktvShowFallback(false);
         var fr = $("#ktvFrame"); if(fr) fr.setAttribute("data-loaded", "1");
+        ktvLoaded = true;
       }
       function ktvArmWatchdog(t, auto){
         ktvClearWatchdog();
@@ -6897,31 +6925,62 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
       function ktvDisplay(t){
         return "https://music.163.com/" + (t.type === "0" ? "playlist" : "song") + "?id=" + t.id;
       }
+      function ktvName(t){
+        if(t.type === "0" && t.id === "10050217985") return "轻音乐歌单《治愈·温柔·放松》";
+        return (t.type === "0" ? "歌单 ID " : "歌曲 ID ") + t.id;
+      }
       function ktvShowCurrent(t){
         var sub = $("#ktvSub");
-        if(!sub) return;
-        if(t.type === "0" && t.id === "10050217985") sub.textContent = "正在放：轻音乐歌单《治愈·温柔·放松》· 播放走网易云正版流";
-        else sub.textContent = "正在放：" + (t.type === "0" ? "歌单" : "歌曲") + " ID " + t.id + " · 播放走网易云正版流";
+        if(sub) sub.textContent = "正在放：" + ktvName(t) + " · 播放走网易云正版流";
         var a = $("#ktvOpenLink"); if(a) a.href = ktvDisplay(t);
+        var nm = $("#ktvMiniName"); if(nm) nm.textContent = ktvName(t);
+      }
+      /* 设播放器地址：先回 about:blank 再设新地址，探针才能认出新文档的提交；
+         歌单名记下来，重开面板时对得上就不重载、不从头开始。 */
+      function ktvLoadSrc(t, auto){
+        var fr = $("#ktvFrame"); if(!fr) return;
+        ktvLoadedId = t.type + ":" + t.id;
+        ktvLoaded = false;
+        fr.removeAttribute("data-loaded");
+        ktvArmWatchdog(t, auto);
+        fr.src = "about:blank";
+        setTimeout(function(){
+          var f2 = $("#ktvFrame"); if(f2) f2.src = ktvPlayerSrc(t, auto);
+        }, 60);
+      }
+      function ktvShowMini(){
+        var m = $("#ktvMini"); if(!m) return;
+        var fr = $("#ktvFrame");
+        var playing = ktvLoaded && fr && fr.src && fr.src.indexOf("music.163.com") !== -1;
+        m.hidden = !playing;
+      }
+      function ktvHideMini(){ var m = $("#ktvMini"); if(m) m.hidden = true; }
+      /* 真停掉：把 iframe 切回 about:blank、清看门狗、藏迷你条 */
+      function ktvStop(){
+        ktvClearWatchdog(); ktvShowLoad(false); ktvShowFallback(false);
+        ktvLoaded = false; ktvLoadedId = "";
+        var fr = $("#ktvFrame");
+        if(fr){ fr.removeAttribute("data-loaded"); fr.src = "about:blank"; }
+        ktvHideMini();
       }
       function ktvOpen(){
         var ov = $("#ktvOverlay"); if(!ov) return;
         var t = ktvCurrent();
-        var fr = $("#ktvFrame");
-        fr.removeAttribute("data-loaded");
-        fr.src = ktvPlayerSrc(t, false);
-        ktvArmWatchdog(t, false);
         ktvShowCurrent(t);
         var inp = $("#ktvInput");
         if(inp) inp.value = ktvDisplay(t);
         ov.classList.add("show"); ov.setAttribute("aria-hidden", "false");
+        ktvHideMini(); /* 面板开着时不显示迷你条 */
+        if(!ktvLoaded || ktvLoadedId !== t.type + ":" + t.id){
+          ktvLoadSrc(t, false); /* 从没加载过、或歌单换了：才设 src；同一歌单重开不重载 */
+        }
+        /* 已经是当前歌单：不动 iframe，音乐继续放，看门狗也不用重探 */
       }
       function ktvClose(){
         var ov = $("#ktvOverlay"); if(!ov) return;
         ov.classList.remove("show"); ov.setAttribute("aria-hidden", "true");
-        ktvClearWatchdog(); ktvShowLoad(false); ktvShowFallback(false);
-        var fr = $("#ktvFrame");
-        if(fr){ fr.removeAttribute("data-loaded"); fr.src = "about:blank"; }
+        /* 只隐藏浮层，不动 iframe：音乐继续放；看门狗不清，播放器还在就不用重探 */
+        ktvShowMini();
       }
       function ktvParse(input){
         var s = String(input || "").trim();
@@ -6942,11 +7001,9 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
           return;
         }
         ktvSave(t);
-        var fr = $("#ktvFrame");
-        fr.removeAttribute("data-loaded");
-        fr.src = ktvPlayerSrc(t, true);
-        ktvArmWatchdog(t, true);
+        ktvLoadSrc(t, true);
         ktvShowCurrent(t);
+        ktvHideMini();
         if(hint) hint.textContent = "换好啦，正在播" + (t.type === "0" ? "歌单" : "歌曲") + " ID " + t.id + "，已记住。";
       }
       var ktvFrameEl = $("#ktvFrame");
@@ -6961,6 +7018,10 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
       if(ktvInputEl) ktvInputEl.addEventListener("keydown", function(ev){ if(ev.key === "Enter"){ ev.preventDefault(); ktvApply(); } });
       var ktvOv = $("#ktvOverlay");
       if(ktvOv) ktvOv.addEventListener("click", function(ev){ if(ev.target === ktvOv) ktvClose(); });
+      var ktvMiniOpenBtn = $("#ktvMiniOpen");
+      if(ktvMiniOpenBtn) ktvMiniOpenBtn.addEventListener("click", ktvOpen);
+      var ktvMiniStopBtn = $("#ktvMiniStop");
+      if(ktvMiniStopBtn) ktvMiniStopBtn.addEventListener("click", ktvStop);
       var backBtn = $("#backBtn");
       if(backBtn) backBtn.addEventListener("click", goEntry);
       var soundOn = true;
@@ -8280,14 +8341,17 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
       }
       function renderRoster(){
         var box = $("#roster"); box.innerHTML = "";
-        var all = [me].concat(classmates);
-        if(typeof remotes !== "undefined") all = all.concat(remotes);
+        /* 真人计数：我 + 远程真人（remotes.length）；顶栏 29/50 含模拟同学不动，这里只数真人 */
+        var remoteList = (typeof remotes !== "undefined") ? remotes : [];
+        var rc = $("#realCount");
+        if(rc) rc.textContent = "真人 " + (remoteList.length + 1) + " 人在线";
+        var all = [me].concat(remoteList).concat(classmates); /* 真人排前面，模拟同学在后 */
         all.forEach(function(m){
           var card = document.createElement("div");
           card.className = "mate" + (m.isMe ? " me-card" : "");
           card.innerHTML =
             '<div class="ava">' + petSVG(m.species, coatById(m.coat), m.pattern, m.state === "sleep" ? "sleep" : "idle") + '</div>' +
-            '<div class="nm">' + escapeHtml(m.name) + (m.isMe ? "（我）" : "") + (m.isRemote ? '<span class="real-badge">真人</span>' : "") + '</div>' +
+            '<div class="nm">' + escapeHtml(m.name) + (m.isMe ? "（我）" : "") + ((m.isMe || m.isRemote) ? '<span class="real-badge">真人</span>' : "") + '</div>' +
             '<div class="where">' + (m.species === "cat" ? "小猫" : "小狗") + ' · 在' + ROOMS[m.room].name + '</div>' +
             '<div class="doing">' + escapeHtml(m.action || "") + '</div>';
           box.appendChild(card);
