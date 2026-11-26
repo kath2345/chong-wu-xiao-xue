@@ -123,6 +123,13 @@
       }
       .go-btn:hover{ background:var(--coral-dark); }
       .go-btn:active{ transform:scale(.98); }
+      .quick-btn{
+        display:none; width:100%; margin:0 auto 16px; border:2px solid var(--coral); border-radius:16px; padding:13px 20px;
+        background:#fff1ec; color:var(--coral-dark); font-family:"ZCOOL KuaiLe",sans-serif; font-size:1.2rem;
+        box-shadow:0 6px 14px rgba(255,90,78,.18); cursor:pointer;
+      }
+      .quick-btn.show{ display:block; }
+      .quick-btn:active{ transform:scale(.98); }
       .entry-foot{ text-align:center; color:var(--ink-soft); font-size:.85rem; margin-top:18px; }
 
       /* ---------- 校园（v6 全屏沉浸式） ---------- */
@@ -209,6 +216,7 @@
       .act-btn.speak{ background:var(--coral); box-shadow:0 4px 12px rgba(255,90,78,.4); }
       .act-btn.speak:hover{ background:var(--coral-dark); }
       .act-btn.speak .a-ico{ background:rgba(255,255,255,.25); }
+      .act-btn.on{ background:rgba(255,90,78,.3); border-color:rgba(255,255,255,.95); }
 
       /* 抽屉：动态/课表/同学名单/地点传送，默认收起不占地方 */
       #panelOverlay{
@@ -225,6 +233,34 @@
       .panel-head h2{ font-family:"ZCOOL KuaiLe",sans-serif; font-size:1.4rem; margin:0; }
       .panel-head .icon-btn{ background:#f0e4d3; border-color:var(--line); color:var(--ink); }
       .panel-card .foot{ margin-top:22px; }
+
+      /* 点歌台：K歌房浮层，网易云官方外链播放器 */
+      #ktvOverlay{
+        position:absolute; inset:0; z-index:40; background:rgba(20,16,12,.5);
+        display:none; align-items:center; justify-content:center; padding:16px;
+      }
+      #ktvOverlay.show{ display:flex; }
+      .ktv-card{
+        background:#fffdf7; border-radius:22px; width:min(560px,100%);
+        max-height:92svh; overflow-y:auto; padding:18px 18px 20px;
+        box-shadow:0 12px 40px rgba(0,0,0,.35);
+      }
+      .ktv-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+      .ktv-head h2{ font-family:"ZCOOL KuaiLe",sans-serif; font-size:1.35rem; margin:0; }
+      .ktv-head .icon-btn{ background:#f0e4d3; border-color:var(--line); color:var(--ink); }
+      .ktv-sub{ font-size:.85rem; color:var(--ink-soft); margin:0 0 12px; }
+      .ktv-row{ display:flex; gap:8px; margin-bottom:12px; }
+      .ktv-row input{
+        flex:1; min-width:0; border:2px solid var(--line); border-radius:12px; padding:9px 12px;
+        font-size:.92rem; font-family:inherit; background:#fff; color:var(--ink); outline:none;
+      }
+      .ktv-row input:focus{ border-color:var(--sun); }
+      .ktv-go{
+        border:none; border-radius:12px; padding:0 18px; background:var(--coral); color:#fff;
+        font-family:"ZCOOL KuaiLe",sans-serif; font-size:1.05rem; white-space:nowrap; cursor:pointer;
+      }
+      .ktv-hint{ font-size:.8rem; color:var(--ink-soft); margin:0 0 10px; min-height:1.1em; }
+      #ktvFrame{ width:100%; height:430px; border:0; border-radius:14px; background:#111; display:block; }
 
       .tabs{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:12px; }
       .tab{
@@ -292,7 +328,7 @@
         .topbar{ top:8px; left:8px; right:8px; }
       }
       /* ---------- 3D 场景 ---------- */
-      #gl{ position:absolute; inset:0; width:100%; height:100%; display:block; touch-action:manipulation; }
+      #gl{ position:absolute; inset:0; width:100%; height:100%; display:block; touch-action:none; }
       #labels{ position:absolute; inset:0; overflow:hidden; pointer-events:none; z-index:6; }
       .scene-tip{
         position:absolute; left:50%; top:14px; transform:translateX(-50%); z-index:7;
@@ -389,6 +425,7 @@
           <div class="live-line"><span class="dot"></span><span>现在有 <b id="entryCount">24</b> 位同学在学校里</span></div>
         </div>
 
+        <button type="button" class="quick-btn" id="quickBtn">一键进学校</button>
         <form class="enroll" id="enrollForm">
           <div class="preview-box">
             <span class="sun"></span><span class="cloud c1"></span><span class="cloud c2"></span>
@@ -492,6 +529,22 @@
           <div style="text-align:center; margin-top:14px;">
             <button class="ghost-btn" id="changeBtn" type="button">换个身份</button>
           </div>
+        </div>
+      </div>
+
+      <div id="ktvOverlay" aria-hidden="true">
+        <div class="ktv-card">
+          <div class="ktv-head">
+            <h2>点歌台</h2>
+            <button class="icon-btn" id="ktvClose" type="button" title="关闭">✕</button>
+          </div>
+          <p class="ktv-sub" id="ktvSub">正在放：周杰伦《叶惠美》歌单 · 播放走网易云正版流</p>
+          <div class="ktv-row">
+            <input id="ktvInput" type="text" placeholder="粘贴网易云歌曲/歌单链接，或歌曲数字 ID" autocomplete="off" />
+            <button class="ktv-go" id="ktvGo" type="button">换歌</button>
+          </div>
+          <p class="ktv-hint" id="ktvHint">换歌后会自动播放，也会记住，下次打开还是它。</p>
+          <iframe id="ktvFrame" title="网易云音乐播放器" allow="autoplay" frameborder="0"></iframe>
         </div>
       </div>
     </div>
@@ -6636,7 +6689,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
 
       /* ---------------- 我 ---------------- */
       var me = { name:"", species:"cat", coat:"orange", pattern:"plain", room:"classroom",
-                 x:80, y:75, dir:1, face:Math.PI/2, el:null, bubbleTimer:null, state:"idle", action:"刚入学", isMe:true };
+                 x:80, y:75, dir:1, face:Math.PI/2, el:null, bubbleTimer:null, state:"idle", sitting:false, action:"刚入学", isMe:true };
       var treats = 0;
       var entered = false;
 
@@ -6682,11 +6735,52 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
       refreshPreview();
       $("#entryCount").textContent = classmates.length;
 
+      /* ---------------- 身份保存（localStorage，只存猫/狗、毛色、名字三项） ---------------- */
+      var LS_KEY = "petSchoolMe";
+      function lsStore(){
+        try{ return window.localStorage; }catch(e){ return null; }
+      }
+      function saveMe(){
+        var ls = lsStore(); if(!ls) return;
+        try{ ls.setItem(LS_KEY, JSON.stringify({ species:me.species, coat:me.coat, name:me.name })); }catch(e){}
+      }
+      function loadSavedMe(){
+        var ls = lsStore(); if(!ls) return null;
+        try{
+          var v = JSON.parse(ls.getItem(LS_KEY) || "null");
+          if(!v || (v.species !== "cat" && v.species !== "dog")) return null;
+          if(typeof v.coat !== "string" || !COATS.some(function(c){ return c.id === v.coat; })) return null;
+          if(typeof v.name !== "string" || !v.name.trim()) return null;
+          return { species:v.species, coat:v.coat, name:v.name.trim().slice(0, 6) };
+        }catch(e){ return null; }
+      }
+      function applySavedToForm(sv){
+        if(!sv) return;
+        setSpecies(sv.species);
+        selCoat = sv.coat;
+        $$(".swatch", swatchBox).forEach(function(x){ x.setAttribute("aria-pressed", "false"); });
+        var idx = COATS.findIndex(function(c){ return c.id === sv.coat; });
+        var sw = $$(".swatch", swatchBox)[idx];
+        if(sw) sw.setAttribute("aria-pressed", "true");
+        $("#nameInput").value = sv.name;
+        refreshPreview();
+      }
+      function refreshQuickBtn(){
+        var qb = $("#quickBtn"); if(!qb) return;
+        var sv = loadSavedMe();
+        if(sv){ qb.textContent = "一键进学校（上次：" + sv.name + "）"; qb.classList.add("show"); }
+        else qb.classList.remove("show");
+      }
+      var savedMe0 = loadSavedMe();
+      if(savedMe0) applySavedToForm(savedMe0);
+      refreshQuickBtn();
+
       $("#enrollForm").addEventListener("submit", function(ev){
         ev.preventDefault();
         var nm = $("#nameInput").value.trim();
         if(!nm) nm = pick(selSpecies === "cat" ? CAT_NAMES : DOG_NAMES);
         me.name = nm; me.species = selSpecies; me.coat = selCoat; me.pattern = selPattern;
+        saveMe();
         enterSchool();
       });
       function goEntry(){
@@ -6695,8 +6789,95 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         document.body.style.overflow = "";
         closePanel();
         window.scrollTo(0,0);
+        refreshQuickBtn();
       }
       $("#changeBtn").addEventListener("click", goEntry);
+      $("#quickBtn").addEventListener("click", function(){
+        var sv = loadSavedMe();
+        if(sv) applySavedToForm(sv);
+        var f = $("#enrollForm");
+        if(f.requestSubmit) f.requestSubmit();
+        else f.dispatchEvent(new Event("submit", { cancelable:true }));
+      });
+
+      /* ---------------- K歌房点歌台（网易云官方外链播放器，走正版流；不存 MP3） ---------------- */
+      var KTV_DEFAULT = { type:"0", id:"2914592677" }; /* 周杰伦《叶惠美》歌单（11 首，含晴天） */
+      var KTV_LS_KEY = "petSchoolKtv";
+      function ktvPlayerSrc(t, auto){
+        return "https://music.163.com/outchain/player?type=" + t.type + "&id=" + t.id + "&auto=" + (auto ? 1 : 0) + "&height=430";
+      }
+      function ktvSaved(){
+        try{
+          var v = JSON.parse(window.localStorage.getItem(KTV_LS_KEY) || "null");
+          if(v && (v.type === "0" || v.type === "2") && /^\d+$/.test(v.id || "")) return { type:v.type, id:v.id };
+        }catch(e){}
+        return null;
+      }
+      function ktvSave(t){
+        try{ window.localStorage.setItem(KTV_LS_KEY, JSON.stringify(t)); }catch(e){}
+      }
+      function ktvCurrent(){ return ktvSaved() || KTV_DEFAULT; }
+      function ktvDisplay(t){
+        return "https://music.163.com/" + (t.type === "0" ? "playlist" : "song") + "?id=" + t.id;
+      }
+      function ktvShowCurrent(t){
+        var sub = $("#ktvSub");
+        if(!sub) return;
+        if(t.type === "0" && t.id === "2914592677") sub.textContent = "正在放：周杰伦《叶惠美》歌单 · 播放走网易云正版流";
+        else sub.textContent = "正在放：" + (t.type === "0" ? "歌单" : "歌曲") + " ID " + t.id + " · 播放走网易云正版流";
+      }
+      function ktvOpen(){
+        var ov = $("#ktvOverlay"); if(!ov) return;
+        var t = ktvCurrent();
+        var fr = $("#ktvFrame");
+        fr.removeAttribute("data-loaded");
+        fr.src = ktvPlayerSrc(t, false);
+        ktvShowCurrent(t);
+        var inp = $("#ktvInput");
+        if(inp) inp.value = ktvDisplay(t);
+        ov.classList.add("show"); ov.setAttribute("aria-hidden", "false");
+      }
+      function ktvClose(){
+        var ov = $("#ktvOverlay"); if(!ov) return;
+        ov.classList.remove("show"); ov.setAttribute("aria-hidden", "true");
+        var fr = $("#ktvFrame");
+        if(fr){ fr.removeAttribute("data-loaded"); fr.src = "about:blank"; }
+      }
+      function ktvParse(input){
+        var s = String(input || "").trim();
+        if(!s) return null;
+        var m = s.match(/music\.163\.com\/(song|playlist)[?#][^ ]*?id=(\d+)/);
+        if(m) return { type: m[1] === "song" ? "2" : "0", id: m[2] };
+        if(/^\d+$/.test(s)) return { type:"2", id:s };
+        var m2 = s.match(/id=(\d+)/);
+        if(m2) return { type: /playlist/.test(s) ? "0" : "2", id: m2[1] };
+        return null;
+      }
+      function ktvApply(){
+        var inp = $("#ktvInput");
+        var t = ktvParse(inp ? inp.value : "");
+        var hint = $("#ktvHint");
+        if(!t){
+          if(hint) hint.textContent = "没认出来，粘贴网易云歌曲/歌单链接，或歌曲数字 ID 再试。";
+          return;
+        }
+        ktvSave(t);
+        var fr = $("#ktvFrame");
+        fr.removeAttribute("data-loaded");
+        fr.src = ktvPlayerSrc(t, true);
+        ktvShowCurrent(t);
+        if(hint) hint.textContent = "换好啦，正在播" + (t.type === "0" ? "歌单" : "歌曲") + " ID " + t.id + "，已记住。";
+      }
+      var ktvFrameEl = $("#ktvFrame");
+      if(ktvFrameEl) ktvFrameEl.addEventListener("load", function(){ ktvFrameEl.setAttribute("data-loaded", "1"); });
+      var ktvCloseBtn = $("#ktvClose");
+      if(ktvCloseBtn) ktvCloseBtn.addEventListener("click", ktvClose);
+      var ktvGoBtn = $("#ktvGo");
+      if(ktvGoBtn) ktvGoBtn.addEventListener("click", ktvApply);
+      var ktvInputEl = $("#ktvInput");
+      if(ktvInputEl) ktvInputEl.addEventListener("keydown", function(ev){ if(ev.key === "Enter"){ ev.preventDefault(); ktvApply(); } });
+      var ktvOv = $("#ktvOverlay");
+      if(ktvOv) ktvOv.addEventListener("click", function(ev){ if(ev.target === ktvOv) ktvClose(); });
       var backBtn = $("#backBtn");
       if(backBtn) backBtn.addEventListener("click", goEntry);
       var soundOn = true;
@@ -6724,7 +6905,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
       /* ---------------- 3D 校园（Three.js） ---------------- */
       var T3 = { ok:false, failed:false, ready:false, scene:null, camera:null, renderer:null,
                  clock:null, templates:{}, petScale:.8, pending:[], ball:null, ballHit:null,
-                 ballPct:{ x:50, y:75 }, ballTX:0, ballTZ:0, camYaw:Math.PI/2, camSnap:true, lastW:0, lastH:0, coatTex:{} };
+                 ballPct:{ x:50, y:75 }, ballTX:0, ballTZ:0, camYaw:Math.PI/2, camSnap:true, camPitch:0, lastDragAt:0, lastW:0, lastH:0, coatTex:{} };
       /* v6 大场景布局（世界单位）：大教室是北边主楼（30×18 大礼堂），院子是中央大院子（30×18，
          石板主路南北贯通），食堂是东边凉亭（18×14），花园在南边带荷花池（30×16），
          K歌房是主楼西边偏殿、电影房是主楼东边偏殿（各 18×18），都从大教室侧门走路进出。
@@ -6733,7 +6914,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
       var ROOM3D_Z = { classroom:-22, playground:-4, cafeteria:-4, garden:13, karaoke:-22, cinema:-22 };
       var SPAN_X = { classroom:30, playground:30, cafeteria:18, garden:30, karaoke:18, cinema:18 };
       var SPAN_Z = { classroom:18, playground:18, cafeteria:14, garden:16, karaoke:18, cinema:18 };
-      var STATE_CLIP = { idle:"idle", study:"idle", play:"dance", eat:"eat", sleep:"static" };
+      var STATE_CLIP = { idle:"idle", study:"idle", play:"dance", eat:"eat", sleep:"static", sit:"static" };
       var labelsBox = document.getElementById("labels");
       var sceneTip = document.getElementById("sceneTip");
       var V3 = null;
@@ -6863,6 +7044,51 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         var off = 512 - ((t / 14) % 1100);
         c.fillText(msg, off, 210);
         if(T3.screenTex) T3.screenTex.needsUpdate = true;
+      }
+      /* 电影房银幕：3 条 AI 视频轮播（VideoTexture 贴银幕）。
+         流量：cinema-1/2/3.mp4 共约 21MB；首次进电影房才创建 video 元素开始加载，
+         不进电影房不加载；离开电影房暂停、回来续播；视频不塞进 index.html。
+         默认静音自动播（浏览器不让带声音自动播），点银幕或点“开声音”后再出声。 */
+      var CINEMA_VIDEOS = ["cinema-1.mp4", "cinema-2.mp4", "cinema-3.mp4"];
+      var CINEMA_TITLES = ["《草地追蝴蝶》", "《大树下野餐》", "《小猫小狗太空漫游》"];
+      function ensureCinemaVideo(){
+        if(T3.cinemaVideo) return T3.cinemaVideo;
+        var v = document.createElement("video");
+        v.muted = true; v.loop = true; v.playsInline = true; v.preload = "auto";
+        v.src = CINEMA_VIDEOS[T3.cinemaIdx || 0];
+        T3.cinemaVideo = v;
+        var tex = new THREE.VideoTexture(v);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        T3.videoTex = tex;
+        if(T3.screenMesh){ T3.screenMesh.material.map = tex; T3.screenMesh.material.needsUpdate = true; }
+        if(me.room === "cinema"){ var pr = v.play(); if(pr && pr.catch) pr.catch(function(){}); }
+        return v;
+      }
+      function cinemaRoomChanged(room){
+        if(room === "cinema"){
+          var v = ensureCinemaVideo();
+          if(v.paused){ var pr = v.play(); if(pr && pr.catch) pr.catch(function(){}); }
+        } else if(T3.cinemaVideo && !T3.cinemaVideo.paused){
+          T3.cinemaVideo.pause();
+        }
+      }
+      function nextCinema(){
+        var v = ensureCinemaVideo();
+        T3.cinemaIdx = ((T3.cinemaIdx || 0) + 1) % CINEMA_VIDEOS.length;
+        var wasMuted = v.muted;
+        v.src = CINEMA_VIDEOS[T3.cinemaIdx];
+        v.load();
+        v.muted = wasMuted;
+        if(me.room === "cinema"){ var pr = v.play(); if(pr && pr.catch) pr.catch(function(){}); }
+        return CINEMA_TITLES[T3.cinemaIdx];
+      }
+      function cinemaSoundLabel(){ return (T3.cinemaVideo && !T3.cinemaVideo.muted) ? "关声音" : "开声音"; }
+      function toggleCinemaSound(){
+        var v = ensureCinemaVideo();
+        v.muted = !v.muted;
+        if(!v.muted && me.room === "cinema"){ var pr = v.play(); if(pr && pr.catch) pr.catch(function(){}); }
+        me.action = v.muted ? "关声音" : "开声音";
+        showBubble(me, v.muted ? "嘘——静音啦" : "有声音啦~", 2200);
       }
       function signTexture(){
         var cv = document.createElement("canvas"); cv.width = 512; cv.height = 128;
@@ -6996,6 +7222,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         box3(.16, 5.1, 10.4, 0x8a5a30, 32.9, 3.2, -22, T3.scene);
         var screen = new THREE.Mesh(new THREE.PlaneGeometry(9.6, 4.6), new THREE.MeshBasicMaterial({ map:T3.screenTex }));
         screen.position.set(32.78, 3.2, -22); screen.rotation.y = -Math.PI / 2; T3.scene.add(screen);
+        T3.screenMesh = screen;
         /* 座位 3 排 × 4 列，面向东边银幕（椅背在西边） */
         [20, 23, 26].forEach(function(sx){
           [-27, -24, -21, -18].forEach(function(sz2){
@@ -7092,10 +7319,16 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         T3.ballTX = ballWorldX(); T3.ballTZ = ballWorldZ();
       }
       function onCanvasTap(ev){
-        if(me.room !== "playground" || !T3.ballHit || !entered) return;
+        if(!entered || !T3.renderer) return;
         var rect = T3.renderer.domElement.getBoundingClientRect();
         var nx = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
         var ny = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+        if(me.room === "cinema" && T3.screenMesh){
+          var rc0 = new THREE.Raycaster();
+          rc0.setFromCamera({ x:nx, y:ny }, T3.camera);
+          if(rc0.intersectObject(T3.screenMesh).length){ toggleCinemaSound(); return; }
+        }
+        if(me.room !== "playground" || !T3.ballHit) return;
         var rc = new THREE.Raycaster();
         rc.setFromCamera({ x:nx, y:ny }, T3.camera);
         var hits = rc.intersectObject(T3.ballHit);
@@ -7179,6 +7412,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
           resizeGL();
           window.addEventListener("resize", resizeGL);
           canvas.addEventListener("pointerdown", onCanvasTap);
+          setupLookDrag(canvas);
           requestAnimationFrame(loop3d);
           loadModels();
         }catch(e){
@@ -7483,6 +7717,39 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
       }
       window.addEventListener("touchstart", function(){ document.body.classList.add("touch"); }, { once:true, passive:true });
 
+      /* 右手拖视角：右半边触摸 / 鼠标拖动转相机（yaw + 俯仰，俯仰限幅不翻）。
+         从摇杆/按钮上开始的触摸，目标是摇杆/按钮本身，不会落到画布上，不冲突。
+         走路方向本来就是相机相对的（stepMe 用 camYaw），拖完朝向直接保持。 */
+      var look = { active:false, id:null, x:0, y:0 };
+      function lookDragStart(ev){
+        if(!entered || !T3.renderer) return;
+        var rect = T3.renderer.domElement.getBoundingClientRect();
+        if(ev.pointerType === "touch" && ev.clientX - rect.left < rect.width / 2) return; /* 左半边留给摇杆 */
+        look.active = true; look.id = ev.pointerId; look.x = ev.clientX; look.y = ev.clientY;
+        try{ T3.renderer.domElement.setPointerCapture(ev.pointerId); }catch(e){}
+      }
+      function lookDragMove(ev){
+        if(!look.active || ev.pointerId !== look.id) return;
+        var dx = ev.clientX - look.x, dy = ev.clientY - look.y;
+        look.x = ev.clientX; look.y = ev.clientY;
+        if(dx || dy){
+          T3.camYaw -= dx * 0.005;
+          T3.camPitch = Math.max(-0.3, Math.min(0.45, (T3.camPitch || 0) - dy * 0.003));
+          T3.lastDragAt = performance.now();
+        }
+        if(ev.cancelable) ev.preventDefault();
+      }
+      function lookDragEnd(ev){
+        if(ev.pointerId !== look.id) return;
+        look.active = false; look.id = null;
+      }
+      function setupLookDrag(canvas){
+        canvas.addEventListener("pointerdown", lookDragStart);
+        canvas.addEventListener("pointermove", lookDragMove);
+        canvas.addEventListener("pointerup", lookDragEnd);
+        canvas.addEventListener("pointercancel", lookDragEnd);
+      }
+
       function inputVec(){
         var x = 0, y = 0;
         if(keys.w) y -= 1;
@@ -7501,6 +7768,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         if(!p) return;
         var v = inputVec();
         var ctrl = v.mag > .12;
+        if(ctrl && me.sitting) standUp();
         if(ctrl){
           var run = keys.shift || joy.mag > .85;
           me.running = run;
@@ -7557,6 +7825,35 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
           }, ms);
         }
       }
+      /* ---------------- 坐下 / 站起来 ---------------- */
+      function updateSitBtn(){
+        var b = $("#sitBtn"); if(!b) return;
+        var label = b.querySelector("span:last-child");
+        var ico = b.querySelector(".a-ico");
+        if(label) label.textContent = me.sitting ? "站起来" : "坐下";
+        if(ico) ico.textContent = me.sitting ? "站" : "坐";
+        b.classList.toggle("on", !!me.sitting);
+      }
+      function sitDown(){
+        if(me.sitting) return;
+        me.sitting = true; me.state = "sit";
+        me.animClip = null; me.animUntil = 0;
+        me.tx = me.x; me.ty = me.y; me.trip = null; me.moving = false;
+        me.action = "坐下";
+        showBubble(me, "坐下啦~", 2200);
+        netSend({ kind:"sit", sitting:true });
+        netTrack();
+        updateSitBtn(); renderRoster();
+      }
+      function standUp(){
+        if(!me.sitting) return;
+        me.sitting = false; me.state = "idle";
+        me.action = "站起来";
+        netSend({ kind:"sit", sitting:false });
+        netTrack();
+        updateSitBtn(); renderRoster();
+      }
+      function toggleSit(){ if(me.sitting) standUp(); else sitDown(); }
       function showBubble(m, text, ms, big){
         if(!m.p3 || !m.p3.bubble) return;
         var b = m.p3.bubble;
@@ -7582,6 +7879,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
       }
       function desiredClip(m){
         if(m.animClip && performance.now() < m.animUntil) return m.animClip;
+        if(m.sitting) return "static";
         if(m.moving) return (m.running || m.state === "play") ? "run" : "walk";
         return STATE_CLIP[m.state] || "idle";
       }
@@ -7670,26 +7968,29 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         if(entered && me.p3){
           /* v6 第三人称跟随相机（像参考图）：身后 4.0、高度 2.6、略俯视，看向角色前方 3.5、高度 1.1，
              FOV 52；自己宠物的背影在画面下方中央，路和主楼在前方，地平线在画面中部。
-             camYaw 只在“往前走”的分量占优时才跟到移动方向后方，纯左右平移/后退时不转镜头（否则会原地打转）。 */
+             平时移动时镜头轻微跟随移动方向；右手拖视角后 1.5 秒内不跟随，拖的朝向保持住。
+             camPitch 是拖视角的俯仰（-0.3~0.45，限幅不翻），改相机高度和看向高度。 */
           var pp = me.p3.group.position;
-          if(me.moving && me.face != null){
+          if(me.moving && me.face != null && !look.active && performance.now() - (T3.lastDragAt || 0) > 1500){
             var phi = me.face - T3.camYaw;
             while(phi > Math.PI) phi -= Math.PI * 2;
             while(phi < -Math.PI) phi += Math.PI * 2;
-            if(Math.abs(phi) < 1.1) T3.camYaw += phi * Math.min(1, dt * 2.2);
+            if(Math.abs(phi) < 1.1) T3.camYaw += phi * Math.min(1, dt * 1.2);
           }
           var cfx = Math.sin(T3.camYaw), cfz = Math.cos(T3.camYaw);
+          var camH = 2.6 - T3.camPitch * 1.2, lookH = 1.1 + T3.camPitch * 3;
           var cl = clampCamera(pp.x - cfx * 4.0, pp.z - cfz * 4.0, me.room);
-          if(T3.camSnap){ T3.camera.position.set(cl.x, 2.6, cl.z); T3.camSnap = false; }
+          if(T3.camSnap){ T3.camera.position.set(cl.x, camH, cl.z); T3.camSnap = false; }
           else {
             T3.camera.position.x += (cl.x - T3.camera.position.x) * Math.min(1, dt * 7);
-            T3.camera.position.y += (2.6 - T3.camera.position.y) * Math.min(1, dt * 7);
+            T3.camera.position.y += (camH - T3.camera.position.y) * Math.min(1, dt * 7);
             T3.camera.position.z += (cl.z - T3.camera.position.z) * Math.min(1, dt * 7);
           }
-          T3.camera.lookAt(pp.x + cfx * 3.5, 1.1, pp.z + cfz * 3.5);
+          T3.camera.lookAt(pp.x + cfx * 3.5, lookH, pp.z + cfz * 3.5);
+          if(me.room !== T3.lastRoom){ var prevRoom = T3.lastRoom; T3.lastRoom = me.room; cinemaRoomChanged(me.room); if(prevRoom === "karaoke" && me.room !== "karaoke") ktvClose(); }
         }
         if(T3.disco) T3.disco.rotation.y += dt * .8;
-        if(T3.screenTex && T3.screenCtx){
+        if(T3.screenTex && T3.screenCtx && !T3.videoTex){
           var nowMs = performance.now();
           if(!T3.screenLast || nowMs - T3.screenLast > 400){ T3.screenLast = nowMs; drawScreen(nowMs); }
         }
@@ -7826,13 +8127,15 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         ],
         karaoke: [
           { label:"唱歌", anim:"dance", run:function(){ setState(me,"play",4600); me.action="唱歌"; showBubble(me, pick(["喵呜~ 啦啦啦~","汪汪！这首我会唱！","啦~ 啦啦~ 好好听"]), 3000); popNote(me); setTimeout(function(){ popNote(me); }, 500); } },
-          { label:"点歌", anim:"gesture-positive", run:function(){ me.action="点歌"; showBubble(me, pick(["点了一首《喵呜之歌》","下一首《汪汪摇滚》！","我想点《小鱼干之歌》"]), 3000); } },
+          { label:"点歌", anim:"gesture-positive", run:function(){ me.action="点歌"; ktvOpen(); showBubble(me, "点歌台打开啦~", 2200); } },
           { label:"跳舞", anim:"dance", run:function(){ setState(me,"play",4200); me.action="跳舞"; showBubble(me, "灯球转起来，扭起来~", 2800); popHeart(me); } }
         ],
         cinema: [
           { label:"看电影", anim:"static", run:function(){ setState(me,"sleep",8000); me.action="看电影"; showBubble(me, "嘘——电影开始了", 3000); } },
           { label:"吃爆米花", anim:"eat", run:function(){ setState(me,"eat",3800); me.action="吃爆米花"; showBubble(me, "咔嚓咔嚓，真香", 3000); } },
-          { label:"小声讨论", anim:"idle", run:function(){ me.action="小声讨论"; showBubble(me, "刚才那只猫好勇敢", 2800); reactNearby(); } }
+          { label:"小声讨论", anim:"idle", run:function(){ me.action="小声讨论"; showBubble(me, "刚才那只猫好勇敢", 2800); reactNearby(); } },
+          { label:"换片", anim:"idle", run:function(){ var t = nextCinema(); me.action = "换片"; showBubble(me, "换片啦：" + t, 2600); } },
+          { label:function(){ return cinemaSoundLabel(); }, anim:"idle", refresh:true, run:function(){ toggleCinemaSound(); } }
         ]
       };
       function renderActions(){
@@ -7845,12 +8148,15 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         ACTIONS[me.room].forEach(function(a){
           var b = document.createElement("button");
           b.type = "button"; b.className = "act-btn";
-          b.innerHTML = '<span class="a-ico">' + a.label.charAt(0) + '</span><span>' + a.label + '</span>';
+          var lb = (typeof a.label === "function") ? a.label() : a.label;
+          b.innerHTML = '<span class="a-ico">' + lb.charAt(0) + '</span><span>' + lb + '</span>';
           b.addEventListener("click", function(){
+            standUp();
             a.run();
             if(a.anim) playAnim(me, a.anim, 3400);
-            netAction(a.label, a.anim);
+            netAction(lb, a.anim);
             renderRoster();
+            if(a.refresh) renderActions();
           });
           box.appendChild(b);
         });
@@ -7871,6 +8177,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
           b.type = "button"; b.className = "act-btn";
           b.innerHTML = '<span class="a-ico">' + a.label.charAt(0) + '</span><span>' + a.label + '</span>';
           b.addEventListener("click", function(){
+            standUp();
             me.action = a.act;
             if(a.state) setState(me, a.state, 4000);
             playAnim(me, a.anim, 3400);
@@ -7881,6 +8188,12 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
           });
           box.appendChild(b);
         });
+        var sit = document.createElement("button");
+        sit.type = "button"; sit.id = "sitBtn"; sit.className = "act-btn";
+        sit.innerHTML = '<span class="a-ico">坐</span><span>坐下</span>';
+        sit.addEventListener("click", function(){ toggleSit(); });
+        box.appendChild(sit);
+        updateSitBtn();
       }
       /* 顶部标签页改成快速传送：点一下传送到该区域入口（走已有传送逻辑 + 动态墙消息），
          不再做场景切换；各区域人数照常显示。 */
@@ -7891,6 +8204,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         renderActions(); updateCounts(); renderRoster();
       }
       function teleportTo(room, silent){
+        standUp();
         var ep = ENTRY_POINTS[room] || ENTRY_POINTS.classroom;
         me.room = room; me.x = ep.x; me.y = ep.y; me.tx = ep.x; me.ty = ep.y;
         me.face = ep.face; T3.camYaw = ep.face; T3.camSnap = true;
@@ -8017,21 +8331,83 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         renderRoster();
       }
       function mateArriveLeave(){
-        var r = Math.random();
-        if(r < .42 && reserve.length){
-          var name = reserve.splice(randi(0, reserve.length - 1), 1)[0];
-          var species = CAT_NAMES.indexOf(name) >= 0 ? "cat" : "dog";
-          var m = makeMate(name, species);
-          m.action = pick(ROOMS[m.room].actions);
-          classmates.push(m);
-          renderPet(m);
-          feed("<b>" + name + "</b> 背着书包来上学啦");
-        } else if(r < .62 && classmates.length > 18){
+        var target = simTarget();
+        if(classmates.length < target){
+          addSim(); /* 名字过滤走 addSim：不与在场同学 / 真人 / 我重名 */
+        } else if(classmates.length > target){
           var idx = randi(0, classmates.length - 1);
           var gone = classmates.splice(idx, 1)[0];
           removePet(gone);
           reserve.push(gone.name);
           feed("<b>" + gone.name + "</b> 放学回家啦，明天见");
+        } else if(Math.random() < .5 && classmates.length > 0 && reserve.length){
+          /* 换班：走一个、来一个，总数不变，校园里一直有来有往；
+             来的那个走 addSim，名字不过滤会撞上真人/我（刚走的那个也先排除，免得前脚走后脚回） */
+          var j = randi(0, classmates.length - 1);
+          var out = classmates.splice(j, 1)[0];
+          removePet(out);
+          reserve.push(out.name);
+          feed("<b>" + escapeHtml(out.name) + "</b> 放学回家啦，明天见");
+          addSim([out.name]);
+        }
+        updateCounts(); renderRoster();
+      }
+
+      /* ---------------- 真人来了，模拟同学让座 ----------------
+         规则：可见模拟同学数 = max(0, 28 - 真人远程同学数）。
+         真人加入就去掉一个模拟同学（优先离我最远的），真人离开就补回一个；
+         总数在真人 ≤28 人时一直是 29（28 模拟 + 自己 + 真人进出相抵）。 */
+      var BASE_SIM = 28;
+      function simTarget(){ return Math.max(0, BASE_SIM - remotes.length); }
+      function simDist(m){
+        var d = Math.sqrt(Math.pow(m.x - me.x, 2) + Math.pow(m.y - me.y, 2));
+        return m.room === me.room ? d : 1000 + d;
+      }
+      function removeSim(m, msg){
+        var i = classmates.indexOf(m);
+        if(i >= 0) classmates.splice(i, 1);
+        removePet(m);
+        if(reserve.indexOf(m.name) < 0) reserve.push(m.name);
+        feed("<b>" + escapeHtml(m.name) + "</b> " + msg);
+      }
+      function addSim(exclude){
+        var inUse = {};
+        classmates.forEach(function(m){ inUse[m.name] = 1; });
+        remotes.forEach(function(m){ inUse[m.name] = 1; });
+        inUse[me.name] = 1;
+        (exclude || []).forEach(function(n){ inUse[n] = 1; });
+        var pool = reserve.filter(function(n){ return !inUse[n]; });
+        if(!pool.length) pool = CAT_NAMES.concat(DOG_NAMES).filter(function(n){ return !inUse[n]; });
+        if(!pool.length) return null;
+        var name = pool.splice(randi(0, pool.length - 1), 1)[0];
+        var ri = reserve.indexOf(name);
+        if(ri >= 0) reserve.splice(ri, 1);
+        var species = CAT_NAMES.indexOf(name) >= 0 ? "cat" : "dog";
+        var m = makeMate(name, species);
+        var room = pick(ROOM_KEYS);
+        var ep = ENTRY_POINTS[room] || ENTRY_POINTS.classroom;
+        m.room = room; m.x = ep.x; m.y = ep.y; m.face = ep.face;
+        m.action = pick(ROOMS[room].actions);
+        classmates.push(m);
+        renderPet(m);
+        feed("<b>" + escapeHtml(name) + "</b> 来上学啦");
+        return m;
+      }
+      function syncSimCount(reason){
+        var target = simTarget();
+        var guard = 0;
+        while(classmates.length > target && guard++ < 40){
+          var far = null, fd = -1;
+          classmates.forEach(function(m){
+            var d = simDist(m);
+            if(d > fd){ fd = d; far = m; }
+          });
+          if(!far) break;
+          removeSim(far, reason === "join" ? "先回家啦，给真人同学让个座位" : "放学回家啦，明天见");
+        }
+        guard = 0;
+        while(classmates.length < target && guard++ < 40){
+          if(!addSim()) break;
         }
         updateCounts(); renderRoster();
       }
@@ -8091,6 +8467,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         var state;
         try{ state = net.channel.presenceState(); }catch(e){ return; }
         var seen = {};
+        var joined = 0, leftN = 0;
         Object.keys(state).forEach(function(key){
           if(key === net.id) return;
           var meta = state[key] && state[key][0];
@@ -8108,6 +8485,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
             remotes.push(r);
             renderPet(r);
             feed("<b>" + escapeHtml(r.name) + "</b> 也来上学啦，是一位真人同学");
+            joined++;
           } else {
             r.action = meta.action || r.action;
             if(meta.room && ROOMS[meta.room] && r.room !== meta.room){
@@ -8124,8 +8502,10 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
             feed("<b>" + escapeHtml(remotes[i].name) + "</b> 放学回家啦（真人同学）");
             removePet(remotes[i]);
             remotes.splice(i, 1);
+            leftN++;
           }
         }
+        if(joined || leftN) syncSimCount(joined ? "join" : "leave");
         updateCounts(); renderRoster();
       }
       function onRemoteAct(p){
@@ -8136,6 +8516,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
           showBubble(r, String(p.text || (r.species === "cat" ? "喵~" : "汪汪！")).slice(0, 24), 2600, true);
         } else if(p.kind === "move"){
           r.lastNet = performance.now();
+          if(p.moving) r.sitting = false;
           if(p.room && ROOMS[p.room] && r.room !== p.room){
             r.room = p.room;
             if(typeof p.x === "number" && typeof p.y === "number"){ r.x = p.x; r.y = p.y; }
@@ -8152,8 +8533,14 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
             placePet(r);
             updateCounts(); renderRoster();
           }
+        } else if(p.kind === "sit"){
+          r.sitting = !!p.sitting;
+          r.action = p.sitting ? "坐下" : "站起来";
+          if(p.sitting){ r.tx = r.x; r.ty = r.y; r.animClip = null; r.animUntil = 0; }
+          renderRoster();
         } else if(p.kind === "action"){
           if(p.label) r.action = String(p.label).slice(0, 12);
+          if(p.label) r.sitting = false;
           if(p.anim) playAnim(r, String(p.anim), 3200);
           if(typeof p.x === "number" && typeof p.y === "number") movePet(r, p.x, p.y);
           renderRoster();
@@ -8205,9 +8592,11 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         classmates.forEach(renderPet);
         me.room = "classroom"; me.x = 50; me.y = 82; me.face = Math.PI;
         T3.camYaw = Math.PI; T3.camSnap = true;
+        me.sitting = false; me.state = "idle";
         renderPet(me);
         setRoomUI();
         renderCommonActions();
+        updateSitBtn();
         netRoomChanged();
         renderSchedule(); updateCounts(); renderRoster();
         feed("<b>" + me.name + "</b> 入学啦，是一只" + (me.species === "cat" ? "小猫" : "小狗") + "同学");
