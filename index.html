@@ -7726,6 +7726,36 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         var tail = null;
         g.traverse(function(o){ if(o.name === "tail") tail = o; });
         T3.scene.add(g);
+        /* 爆米花盒：红白条纹纸盒 + 白色爆米花粒，平时藏起来，吃爆米花时才拿在嘴边。
+           挂在宠物组里，跟着宠物走、朝向跟宠物一致。尺寸按世界单位算（除以 petScale）：
+           盒子中心在嘴边（世界坐标 y 0.74、身前 0.62），太低会被前排椅背挡住看不见。 */
+        var popCanvas = document.createElement("canvas");
+        popCanvas.width = 128; popCanvas.height = 64;
+        var pcx = popCanvas.getContext("2d");
+        for(var si = 0; si < 8; si++){ pcx.fillStyle = (si % 2 === 0) ? "#e23b3b" : "#fff7e8"; pcx.fillRect(si * 16, 0, 16, 64); }
+        var ps = T3.petScale;
+        var pop = new THREE.Group();
+        pop.name = "popcorn";
+        var popBox = new THREE.Mesh(
+          new THREE.BoxGeometry(0.50 / ps, 0.36 / ps, 0.34 / ps),
+          /* Basic 材质不受光照：影院很暗，Lambert 的盒子会被照得发黑看不清 */
+          new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(popCanvas) }));
+        popBox.position.y = 0.10 / ps; pop.add(popBox);
+        var popKernelMat = new THREE.MeshBasicMaterial({ color: 0xfff6d8 });
+        [[-0.14, 0.32, -0.06], [0.0, 0.36, 0.06], [0.15, 0.31, -0.05],
+         [-0.05, 0.33, 0.10], [0.10, 0.34, 0.09], [0.06, 0.32, -0.10]].forEach(function(kp){
+          var k = new THREE.Mesh(new THREE.SphereGeometry(0.08 / ps, 10, 8), popKernelMat);
+          k.position.set(kp[0] / ps, kp[1] / ps, kp[2] / ps); pop.add(k);
+        });
+        /* 盒子举在脸颊边（世界坐标：盒中心 y 0.95、身前 0.90、侧偏 0.55）：
+           宠物身体是头+身一整块大盒子，鼻子伸到组原点前方 0.92 米，盒子放
+           身前 0.62/0.68 米处整个嵌在身体里；放身前 1.20 米虽出身体，但离
+           镜头太近、俯拍下投影沉到操作栏后面。放脸颊侧边：侧偏 0.55 已出
+           身体半宽（0.41），鼻子前面不挡脸，嘴的高度低头够得着，投影在
+           操作栏上方。局部 x 为宠物侧向、z 为前方。 */
+        pop.position.set(0.55 / ps, 0.85 / ps, 0.90 / ps);
+        pop.visible = false;
+        g.add(pop);
         var lab = document.createElement("div");
         lab.className = "tag3d" + (m.isMe ? " me" : "");
         var bub = document.createElement("div"); bub.className = "p-bubble";
@@ -7735,7 +7765,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         lab.style.display = "none";
         labelsBox.appendChild(lab);
         m.p3 = { group:g, mixer:mixer, acts:acts, cur:null, tail:tail, tailPrev:0,
-                 label:lab, bubble:bub, phase: Math.random() * 6.28 };
+                 label:lab, bubble:bub, popcorn:pop, phase: Math.random() * 6.28 };
         placePet(m);
       }
       function renderPet(m){
@@ -8111,6 +8141,37 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
       }
       /* 我自己的移动：相机相对方向（W/摇杆上 = 屏幕前方，A/D = 屏幕左右），
          走 2.0 / 跑 3.8 世界单位每秒；走到门/路口就穿区，其余边由 resolveObstacles 挡住 */
+      /* 贴墙找门：推着墙边走、门就在附近时，沿着墙滑向门洞，别顶在墙上动不了。
+         （K歌房/电影房的门只有 5.4 米宽，手机上走到门边偏一点就顶墙；
+         没这个辅助，摇杆很难一次对准门。只在“推着墙往外走、且门在附近”
+         时才滑，离门太远不硬拽，进了门洞就停。） */
+      function doorAssist(m, wdx, wdz, dt){
+        var list = EXITS.filter(function(e){ return e.from === m.room; });
+        if(!list.length) return;
+        for(var i = 0; i < list.length; i++){
+          var e = list[i];
+          var center = (e.gate[0] + e.gate[1]) / 2;
+          var half = (e.gate[1] - e.gate[0]) / 2;
+          var along, outward, rate;
+          if(e.edge === "w" && m.x <= 1.5){ along = m.y; outward = wdx < -0.2; rate = 1.5 * 40 / SPAN_Z[m.room]; }
+          else if(e.edge === "e" && m.x >= 98.5){ along = m.y; outward = wdx > 0.2; rate = 1.5 * 40 / SPAN_Z[m.room]; }
+          else if(e.edge === "n" && m.y <= 56.5){ along = m.x; outward = wdz < -0.2; rate = 1.5 * 100 / SPAN_X[m.room]; }
+          else if(e.edge === "s" && m.y >= 93.5){ along = m.x; outward = wdz > 0.2; rate = 1.5 * 100 / SPAN_X[m.room]; }
+          else continue;
+          if(!outward) continue;
+          var off = along - center;
+          if(Math.abs(off) <= half) continue; /* 门洞里了，等穿区 */
+          if(Math.abs(off) > half + 8) continue; /* 离门太远，别硬拽 */
+          var step = rate * dt * (off > 0 ? -1 : 1);
+          /* 别一脚滑过门洞：最多滑到门洞里 0.2。上一版停在门洞外 0.5 处留了死区，
+             帧步长一大（0.33）就一脚跨进死区、卡在门边 0.33 外再也进不去。 */
+          var maxStep = Math.abs(off) - half + 0.2;
+          if(Math.abs(step) > maxStep) step = maxStep * (off > 0 ? -1 : 1);
+          if(e.edge === "w" || e.edge === "e") m.y += step; else m.x += step;
+          resolveObstacles(m);
+          return;
+        }
+      }
       function stepMe(dt){
         var p = me.p3;
         if(!p) return;
@@ -8131,6 +8192,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
           me.y += wz * sp * dt * 40 / SPAN_Z[me.room];
           tryCrossRoom(me);
           resolveObstacles(me);
+          doorAssist(me, wx, wz, dt); /* 贴墙顶住了、门在附近：沿墙滑向门洞 */
           me.tx = me.x; me.ty = me.y;
           me.face = Math.atan2(wx, wz);
           me.moving = true;
@@ -8300,6 +8362,91 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         netMove(false); netTrack();
         updateSitBtn(); renderRoster();
       }
+      /* 站起来落点：必须落在障碍“推开范围”之外，不然宠物永远走不到目标点、
+         在原地来回弹（食堂长椅就是这么卡住的：旧落点“椅子前方 1.5 米”直接落在
+         桌椅障碍块里；院子长椅的旧落点也在 r=3 推开圈里）。落点按宠物的身体算，
+         不只按中心点：身体后沿离组原点 0.73 米，落点到障碍/房边的距离要留出这段，
+         不然身体还是贴着长椅和绿篱站着。 */
+      function bodyReach(room){
+        /* 身体半长 0.73 米，换算成逻辑单位（取 x/y 两个方向里较大的那个） */
+        return Math.max(0.73 / SPAN_X[room] * 100, 0.73 / SPAN_Z[room] * 40);
+      }
+      function obstacleGap(room, x, y){
+        var list = OBSTACLES[room]; if(!list || !list.length) return Infinity;
+        var worst = Infinity;
+        for(var i = 0; i < list.length; i++){
+          var o = list[i];
+          var r = (o.r != null ? o.r : 3);
+          var cx = Math.max(o.x - o.hx, Math.min(x, o.x + o.hx));
+          var cy = Math.max(o.y - o.hy, Math.min(y, o.y + o.hy));
+          var d = Math.sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy)) - r;
+          if(d < worst) worst = d;
+        }
+        return worst;
+      }
+      function pushDirAt(room, px, py){
+        /* 该点处障碍推开的方向（单位向量），不在任何推开圈里返回 null。
+           在障碍块内部时按最小穿透边算，和 resolveObstacles 同一套规则。 */
+        var list = OBSTACLES[room]; if(!list || !list.length) return null;
+        for(var i = 0; i < list.length; i++){
+          var o = list[i];
+          var r = (o.r != null ? o.r : 3);
+          var cx = Math.max(o.x - o.hx, Math.min(px, o.x + o.hx));
+          var cy = Math.max(o.y - o.hy, Math.min(py, o.y + o.hy));
+          var vx = px - cx, vy = py - cy;
+          var d = Math.sqrt(vx * vx + vy * vy);
+          if(d < r){
+            if(d > 0.001) return { x: vx / d, y: vy / d };
+            var pl = px - (o.x - o.hx), pr = (o.x + o.hx) - px;
+            var pt = py - (o.y - o.hy), pb = (o.y + o.hy) - py;
+            var mn = Math.min(pl, pr, pt, pb);
+            if(mn === pl) return { x:-1, y:0 };
+            if(mn === pr) return { x:1, y:0 };
+            if(mn === pt) return { x:0, y:-1 };
+            return { x:0, y:1 };
+          }
+        }
+        return null;
+      }
+      function segmentBlocked(room, x0, y0, x1, y1){
+        /* 沿着 (x0,y0)->(x1,y1) 每 0.5 米取样：如果某点落在推开圈里、且推开方向
+           与行进方向几乎正对（夹角 > 155°），这段路走不通，会顶在原地。
+           侧着擦过去（推开方向与行进方向垂直或同向）不算堵，能滑过去。 */
+        var list = OBSTACLES[room]; if(!list || !list.length) return false;
+        var dx = x1 - x0, dy = y1 - y0;
+        var len = Math.sqrt(dx * dx + dy * dy); if(len < 0.01) return false;
+        dx /= len; dy /= len;
+        var steps = Math.max(1, Math.ceil(len / 0.5));
+        for(var s = 1; s <= steps; s++){
+          var t = len * s / steps;
+          var pd = pushDirAt(room, x0 + dx * t, y0 + dy * t);
+          if(pd && pd.x * dx + pd.y * dy < -0.9) return true;
+        }
+        return false;
+      }
+      function clearStandPoint(room, x, y, face){
+        /* 候选方向：椅子后方（退出方向）起，每 45° 转一圈；距离 1.5~4 米。
+           要求落点到每个障碍的距离 >= 身体半长 + 0.5（身体不贴家具），
+           且落点离房边也留出身体半长（别贴着绿篱/墙站），整段路不迎头撞上障碍。
+           实在没有全清的点，取推开距离最大的那个（再由推开机制顶出去）。 */
+        var reach = bodyReach(room) + 0.5;
+        var ex = 0.73 / SPAN_X[room] * 100 + 0.3, ey = 0.73 / SPAN_Z[room] * 40 + 0.3;
+        var best = null, bestGap = -Infinity;
+        for(var k = 0; k < 8; k++){
+          var dir = face + Math.PI + k * Math.PI / 4;
+          var fx = Math.sin(dir), fz = Math.cos(dir);
+          for(var d = 0; d < 6; d++){
+            var dist = 1.5 + d * 0.5;
+            var px = Math.min(100, Math.max(0, x + fx * dist / SPAN_X[room] * 100));
+            var py = Math.min(95, Math.max(55, y + fz * dist / SPAN_Z[room] * 40));
+            var gap = obstacleGap(room, px, py);
+            if(gap > bestGap){ bestGap = gap; best = { x:px, y:py }; }
+            if(gap >= reach && px >= ex && px <= 100 - ex && py >= 55 + ey && py <= 95 - ey &&
+               !segmentBlocked(room, x, y, px, py)) return { x:px, y:py };
+          }
+        }
+        return best || { x:x, y:y };
+      }
       function standUp(){
         cancelSeatWalk();
         if(!me.sitting) return;
@@ -8309,10 +8456,10 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         me.sitting = false; me.state = "idle";
         me.action = "站起来";
         if(seat){
-          /* 从椅子上站起来：走到椅子前方 1.5 米处，站在座位边上 */
-          var fx = Math.sin(seat.face), fz = Math.cos(seat.face);
-          me.tx = Math.min(100, Math.max(0, seat.x + fx * 1.5 / SPAN_X[seat.room] * 100));
-          me.ty = Math.min(95, Math.max(55, seat.y + fz * 1.5 / SPAN_Z[seat.room] * 40));
+          /* 从椅子上站起来：走到椅子边上的空地（不在任何障碍的推开范围里），
+             别再像以前那样走到椅子前方 1.5 米——那点在桌椅障碍块里，走不到。 */
+          var pt = clearStandPoint(seat.room, seat.x, seat.y, seat.face);
+          me.tx = pt.x; me.ty = pt.y;
         }
         netSend({ kind:"sit", sitting:false, seat: seat ? { id:seat.id } : null });
         netTrack();
@@ -8379,6 +8526,12 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
           m.face = worldDirAngle(m.room, dx, dy);
           tryCrossRoom(m);
           resolveObstacles(m);
+          /* 模拟同学跨区赶路：贴墙顶住了、门在附近，沿墙滑向门洞 */
+          if(m.trip && m.trip.room !== m.room){
+            var wdx2 = dx / dist * SPAN_X[m.room] / 100, wdz2 = dy / dist * SPAN_Z[m.room] / 40;
+            var wl2 = Math.sqrt(wdx2 * wdx2 + wdz2 * wdz2) || 1;
+            doorAssist(m, wdx2 / wl2, wdz2 / wl2, dt);
+          }
         }
         if(m.trip && m.trip.room === m.room){
           var tdx = m.trip.x - m.x, tdy = m.trip.y - m.y;
@@ -8495,6 +8648,13 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
           if(m.isMe) stepMe(dt); else stepPet(m, dt);
           applyClip(m);
           m.p3.mixer.update(dt);
+          /* 爆米花盒：只在吃爆米花时拿在手里（自己、模拟同学、真人同学都一样；
+             真人不同步 state，靠动画片段 animClip 判断） */
+          if(m.p3.popcorn){
+            var eatingPop = (m.action === "吃爆米花") &&
+              (m.state === "eat" || (m.animClip === "eat" && performance.now() < m.animUntil));
+            m.p3.popcorn.visible = eatingPop;
+          }
           if(m.p3.tail){
             var wv = Math.sin(t * 3.4 + m.p3.phase) * .38;
             m.p3.tail.rotateY(wv - m.p3.tailPrev);
