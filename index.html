@@ -260,6 +260,11 @@
         font-family:"ZCOOL KuaiLe",sans-serif; font-size:1.05rem; white-space:nowrap; cursor:pointer;
       }
       .ktv-hint{ font-size:.8rem; color:var(--ink-soft); margin:0 0 10px; min-height:1.1em; }
+      .ktv-load{ font-size:.85rem; color:var(--ink-soft); margin:0 0 8px; }
+      .ktv-fallback{ font-size:.88rem; margin:10px 0 0; }
+      .ktv-fallback a{ color:var(--coral-dark); font-weight:700; }
+      .ktv-open{ font-size:.82rem; margin:8px 0 0; text-align:right; }
+      .ktv-open a{ color:var(--ink-soft); }
       #ktvFrame{ width:100%; height:430px; border:0; border-radius:14px; background:#111; display:block; }
 
       .tabs{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:12px; }
@@ -544,7 +549,10 @@
             <button class="ktv-go" id="ktvGo" type="button">换歌</button>
           </div>
           <p class="ktv-hint" id="ktvHint">换歌后会自动播放，也会记住，下次打开还是它。</p>
-          <iframe id="ktvFrame" title="网易云音乐播放器" allow="autoplay" frameborder="0"></iframe>
+          <p class="ktv-load" id="ktvLoad" hidden>正在打开播放器…</p>
+          <iframe id="ktvFrame" title="网易云音乐播放器" allow="autoplay; encrypted-media" frameborder="0"></iframe>
+          <p class="ktv-open"><a id="ktvOpenLink" href="https://music.163.com/playlist?id=2914592677" target="_blank" rel="noopener">在网易云打开 ↗</a></p>
+          <p class="ktv-fallback" id="ktvFallback" hidden>播放器打不开？<a id="ktvFallbackLink" href="https://music.163.com/playlist?id=2914592677" target="_blank" rel="noopener">点这里去网易云听</a></p>
         </div>
       </div>
     </div>
@@ -6689,7 +6697,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
 
       /* ---------------- 我 ---------------- */
       var me = { name:"", species:"cat", coat:"orange", pattern:"plain", room:"classroom",
-                 x:80, y:75, dir:1, face:Math.PI/2, el:null, bubbleTimer:null, state:"idle", sitting:false, action:"刚入学", isMe:true };
+                 x:80, y:75, dir:1, face:Math.PI/2, el:null, bubbleTimer:null, state:"idle", sitting:false, seatId:null, seatTarget:null, action:"刚入学", isMe:true };
       var treats = 0;
       var entered = false;
 
@@ -6784,6 +6792,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         enterSchool();
       });
       function goEntry(){
+        standUp();
         document.getElementById("app").classList.remove("on");
         document.getElementById("entry").style.display = "flex";
         document.body.style.overflow = "";
@@ -6803,8 +6812,65 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
       /* ---------------- K歌房点歌台（网易云官方外链播放器，走正版流；不存 MP3） ---------------- */
       var KTV_DEFAULT = { type:"0", id:"2914592677" }; /* 周杰伦《叶惠美》歌单（11 首，含晴天） */
       var KTV_LS_KEY = "petSchoolKtv";
-      function ktvPlayerSrc(t, auto){
-        return "https://music.163.com/outchain/player?type=" + t.type + "&id=" + t.id + "&auto=" + (auto ? 1 : 0) + "&height=430";
+      /* 网易云外链播放器按 UA 分流：手机 UA 请求桌面版会被 302 到 http://…/m/outchain/player，
+         https 父页面嵌 http 子页面会被浏览器当混合内容拦掉（黑框无声）；桌面 UA 请求 /m/ 版
+         又会被 302 回 http 桌面版，同样被拦。所以按 UA 直接取对应版本，全程走 https。 */
+      function ktvIsMobile(){
+        return /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "") ||
+               (window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
+      }
+      function ktvPlayerSrc(t, auto, mobile){
+        var base = (mobile == null ? ktvIsMobile() : mobile)
+          ? "https://music.163.com/m/outchain/player"
+          : "https://music.163.com/outchain/player";
+        return base + "?type=" + t.type + "&id=" + t.id + "&auto=" + (auto ? 1 : 0) + "&height=430";
+      }
+      /* 播放器加载看门狗：文档一提交就算“到了”，不用等 load 事件
+         （网易云的 CSS 常常拖很久，load 事件来得晚不代表没在播；
+         跨域文档提交后 contentDocument 会变成 null，提交前还是能读到的
+         about:blank，所以每 2 秒探一次；关面板时会先切回 about:blank，
+         重开时探针不会把旧文档误认成新文档）。
+         30 秒都没提交（混合内容被拦、网络挂起），先换另一版 URL 再试一次；
+         再 30 秒还没提交，就显示“去网易云听”兜底链接。 */
+      var ktvLoadTimer = null, ktvTriedAlt = false, ktvNavCheck = null;
+      function ktvShowLoad(on){ var el = $("#ktvLoad"); if(el) el.hidden = !on; }
+      function ktvShowFallback(on){
+        var el = $("#ktvFallback"); if(!el) return;
+        el.hidden = !on;
+        if(on){ var a = $("#ktvFallbackLink"); if(a) a.href = ktvDisplay(ktvCurrent()); }
+      }
+      function ktvClearWatchdog(){
+        if(ktvLoadTimer){ clearTimeout(ktvLoadTimer); ktvLoadTimer = null; }
+        if(ktvNavCheck){ clearInterval(ktvNavCheck); ktvNavCheck = null; }
+      }
+      function ktvMarkLoaded(){
+        ktvClearWatchdog(); ktvShowLoad(false); ktvShowFallback(false);
+        var fr = $("#ktvFrame"); if(fr) fr.setAttribute("data-loaded", "1");
+      }
+      function ktvArmWatchdog(t, auto){
+        ktvClearWatchdog();
+        ktvTriedAlt = false;
+        ktvShowLoad(true); ktvShowFallback(false);
+        var fr0 = $("#ktvFrame"); if(fr0) fr0.removeAttribute("data-loaded");
+        ktvNavCheck = setInterval(function(){
+          var f = $("#ktvFrame"); if(!f) return;
+          var nav = false;
+          try { nav = (f.contentDocument === null); } catch(e){ nav = true; }
+          if(nav) ktvMarkLoaded();
+        }, 2000);
+        ktvLoadTimer = setTimeout(function(){
+          var f2 = $("#ktvFrame");
+          if(!f2 || f2.getAttribute("data-loaded")) return;
+          if(!ktvTriedAlt){
+            ktvTriedAlt = true;
+            f2.removeAttribute("data-loaded");
+            f2.src = ktvPlayerSrc(t, auto, !ktvIsMobile());
+            ktvLoadTimer = setTimeout(function(){
+              var f3 = $("#ktvFrame");
+              if(f3 && !f3.getAttribute("data-loaded")){ ktvShowLoad(false); ktvShowFallback(true); }
+            }, 30000);
+          } else { ktvShowLoad(false); ktvShowFallback(true); }
+        }, 30000);
       }
       function ktvSaved(){
         try{
@@ -6825,6 +6891,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         if(!sub) return;
         if(t.type === "0" && t.id === "2914592677") sub.textContent = "正在放：周杰伦《叶惠美》歌单 · 播放走网易云正版流";
         else sub.textContent = "正在放：" + (t.type === "0" ? "歌单" : "歌曲") + " ID " + t.id + " · 播放走网易云正版流";
+        var a = $("#ktvOpenLink"); if(a) a.href = ktvDisplay(t);
       }
       function ktvOpen(){
         var ov = $("#ktvOverlay"); if(!ov) return;
@@ -6832,6 +6899,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         var fr = $("#ktvFrame");
         fr.removeAttribute("data-loaded");
         fr.src = ktvPlayerSrc(t, false);
+        ktvArmWatchdog(t, false);
         ktvShowCurrent(t);
         var inp = $("#ktvInput");
         if(inp) inp.value = ktvDisplay(t);
@@ -6840,6 +6908,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
       function ktvClose(){
         var ov = $("#ktvOverlay"); if(!ov) return;
         ov.classList.remove("show"); ov.setAttribute("aria-hidden", "true");
+        ktvClearWatchdog(); ktvShowLoad(false); ktvShowFallback(false);
         var fr = $("#ktvFrame");
         if(fr){ fr.removeAttribute("data-loaded"); fr.src = "about:blank"; }
       }
@@ -6865,11 +6934,14 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         var fr = $("#ktvFrame");
         fr.removeAttribute("data-loaded");
         fr.src = ktvPlayerSrc(t, true);
+        ktvArmWatchdog(t, true);
         ktvShowCurrent(t);
         if(hint) hint.textContent = "换好啦，正在播" + (t.type === "0" ? "歌单" : "歌曲") + " ID " + t.id + "，已记住。";
       }
       var ktvFrameEl = $("#ktvFrame");
-      if(ktvFrameEl) ktvFrameEl.addEventListener("load", function(){ ktvFrameEl.setAttribute("data-loaded", "1"); });
+      if(ktvFrameEl) ktvFrameEl.addEventListener("load", function(){
+        if(ktvFrameEl.src && ktvFrameEl.src !== "about:blank") ktvMarkLoaded();
+      });
       var ktvCloseBtn = $("#ktvClose");
       if(ktvCloseBtn) ktvCloseBtn.addEventListener("click", ktvClose);
       var ktvGoBtn = $("#ktvGo");
@@ -6992,8 +7064,8 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         sph3(1.1, leafColor, 1.05, 2.3, -.2, g);
         sph3(.8, leafColor, .1, 3.5, .1, g);
       }
-      function bench3(x, z){
-        var g = new THREE.Group(); g.position.set(x, 0, z); T3.scene.add(g);
+      function bench3(x, z, ry){
+        var g = new THREE.Group(); g.position.set(x, 0, z); if(ry) g.rotation.y = ry; T3.scene.add(g);
         box3(2.6, .14, .7, 0x8a5a30, 0, .5, 0, g);
         box3(2.6, .5, .12, 0x8a5a30, 0, .95, -.32, g);
         box3(.14, .5, .6, 0x6a4526, -1.1, .25, 0, g);
@@ -7199,6 +7271,14 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         T3.disco = disco;
         var ktvPink = new THREE.PointLight(0xff5aa0, .7, 13); ktvPink.position.set(-29, 3.5, -22); T3.scene.add(ktvPink);
         var ktvBlue = new THREE.PointLight(0x5aa0ff, .7, 13); ktvBlue.position.set(-20, 3.5, -22); T3.scene.add(ktvBlue);
+        /* 圆凳 2 列 × 3 排（东边，面向西边舞台） */
+        [-19, -17].forEach(function(stx){
+          [-26, -22, -18].forEach(function(stz){
+            cyl3(.55, .55, .12, 0xff8fa3, stx, .5, stz, T3.scene);
+            cyl3(.08, .08, .45, 0x8a5a30, stx, .25, stz, T3.scene);
+            cyl3(.3, .36, .06, 0x8a5a30, stx, .03, stz, T3.scene);
+          });
+        });
         /* 门牌：大教室西门上方（朝大教室）+ 南墙外（朝院子） */
         var kSign1 = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 1.15), new THREE.MeshLambertMaterial({ map:smallSignTexture("K 歌 房", "#7a3a6e") }));
         kSign1.position.set(-14.9, 4.7, -22); kSign1.rotation.y = Math.PI / 2; T3.scene.add(kSign1);
@@ -7269,6 +7349,9 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         cyl3(.34, .26, .16, 0xff8fa3, 24, 1.36, -9.2, T3.scene);
         cyl3(.34, .26, .16, 0x8fd07f, 26.6, 1.36, -9.2, T3.scene);
         table3(cx, cz, -5, 2.5); table3(cx, cz, 5, 4.5);
+        /* 每张圆桌配两条长凳（桌子北边一条面朝南，桌子南边一条面朝北） */
+        bench3(19, -3.3, 0); bench3(19, 0.3, Math.PI);
+        bench3(29, -1.3, 0); bench3(29, 2.3, Math.PI);
         /* ---- 花园：南边（中心 0,13，占地 30×16），东边荷花池 ---- */
         cx = 0; cz = 13;
         ground3(0x8fd07f, cx, cz, 30, 16, 0.01);
@@ -7289,6 +7372,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         flowers3(cx, cz, 2, 4, [0xc39bff, 0xff8fa3, 0xffd94d]);
         flowers3(cx, cz, -3, -4, [0xff9d5c, 0xffffff, 0xff8fa3]);
         bench3(-6, 16);
+        bench3(3, 13, Math.PI / 2); /* 荷花池西边长椅，面朝东边池子 */
         /* ---- 绿篱：路口留空，其余边挡住（视觉提示；真正挡路靠逻辑边界） ---- */
         hedge3(15.3, -9.85, .6, 6.3); hedge3(15.3, 1.85, .6, 6.3);
         hedge3(-9.6, 5.3, 10.8, .6); hedge3(9.6, 5.3, 10.8, .6);
@@ -7552,11 +7636,15 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         cinema: []
       };
       function resolveObstacles(m){
+        /* 坐在椅子上不动时不参与碰撞推出；走向椅子时，椅子附近的障碍不挡路 */
+        var sa = (m.seatId && seatById(m.seatId)) || m.seatTarget || null;
+        if(sa && m.sitting) return;
         var list = OBSTACLES[m.room];
         if(list){
           var r = 3;
           for(var i = 0; i < list.length; i++){
             var o = list[i];
+            if(sa && Math.abs(o.x - sa.x) < o.hx + 4 && Math.abs(o.y - sa.y) < o.hy + 4) continue;
             var cx = Math.max(o.x - o.hx, Math.min(m.x, o.x + o.hx));
             var cy = Math.max(o.y - o.hy, Math.min(m.y, o.y + o.hy));
             var dx = m.x - cx, dy = m.y - cy;
@@ -7768,7 +7856,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         if(!p) return;
         var v = inputVec();
         var ctrl = v.mag > .12;
-        if(ctrl && me.sitting) standUp();
+        if(ctrl && (me.sitting || me.seatTarget)) standUp();
         if(ctrl){
           var run = keys.shift || joy.mag > .85;
           me.running = run;
@@ -7796,7 +7884,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
           var dist = Math.sqrt(dx * dx + dy * dy);
           me.moving = dist > .6;
           if(me.moving){
-            var st = 9 * dt;
+            var st = (me.seatTarget ? 14 : 9) * dt;
             if(st >= dist){ me.x = tx; me.y = ty; }
             else { me.x += dx / dist * st; me.y += dy / dist * st; }
             me.face = worldDirAngle(me.room, dx, dy);
@@ -7804,6 +7892,8 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
             resolveObstacles(me);
           }
         }
+        if(me.seatTarget && !me.moving && !me.sitting) arriveAtSeat();
+        else if(me.seatTarget && me.moving) netMove(true);
         p.group.position.set(petWorldX(me), 0, petWorldZ(me));
         if(me.face != null){
           var rd = me.face - p.group.rotation.y;
@@ -7825,17 +7915,88 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
           }, ms);
         }
       }
+      /* ---------------- 座位锚点（坐下要坐到椅子上） ----------------
+         逻辑坐标 x 0-100、y 55-95；face 是坐下后的朝向（π=北/黑板·老师台，
+         0=南，π/2=东/银幕·荷花池，-π/2=西/舞台）。
+         电影房 12 张红椅、教室 20 个坐垫、K歌房 6 个圆凳、食堂 4 条长凳、
+         花园 2 条长椅、院子 2 条长椅，共 46 个座位。 */
+      var SEATS = (function(){
+        var list = [];
+        function add(room, x, y, face){ list.push({ id:room + "-" + list.length, room:room, x:x, y:y, face:face }); }
+        [27.8, 44.4, 61.1].forEach(function(sx){
+          [63.9, 70.6, 77.2, 83.9].forEach(function(sy){ add("cinema", sx, sy, Math.PI / 2); });
+        });
+        [16.7, 33.3, 50, 66.7, 83.3].forEach(function(mx){
+          [63.9, 70.6, 77.2, 83.9].forEach(function(my){ add("classroom", mx, my, Math.PI); });
+        });
+        [[77.8, 66.1], [77.8, 75], [77.8, 83.9], [88.9, 66.1], [88.9, 75], [88.9, 83.9]].forEach(function(s){
+          add("karaoke", s[0], s[1], -Math.PI / 2);
+        });
+        add("cafeteria", 22.2, 77, 0); add("cafeteria", 22.2, 87.3, Math.PI);
+        add("cafeteria", 77.8, 82.7, 0); add("cafeteria", 77.8, 93, Math.PI);
+        add("garden", 30, 82.5, 0); add("garden", 60, 75, Math.PI / 2);
+        add("playground", 26.7, 66.1, 0); add("playground", 83.3, 59.4, 0);
+        return list;
+      })();
+      var seatTakenBy = {}; /* seatId -> "me" 或真人 id（广播占座，防抢椅子） */
+      function seatById(id){ for(var i = 0; i < SEATS.length; i++) if(SEATS[i].id === id) return SEATS[i]; return null; }
+      function worldDist2(room, ax, ay, bx, by){
+        var dx = (ax - bx) / 100 * SPAN_X[room], dy = (ay - by) / 40 * SPAN_Z[room];
+        return Math.sqrt(dx * dx + dy * dy);
+      }
+      /* 座位是否空着：没被广播占座，且 1.5 米内没有别的同学（模拟同学不广播，靠距离判断） */
+      function seatFreeForMe(seat){
+        if(seatTakenBy[seat.id] && seatTakenBy[seat.id] !== "me") return false;
+        var pets = allPets();
+        for(var i = 0; i < pets.length; i++){
+          var m = pets[i];
+          if(m.isMe || m.room !== seat.room) continue;
+          if(worldDist2(seat.room, m.x, m.y, seat.x, seat.y) < 1.5) return false;
+        }
+        return true;
+      }
+      function findFreeSeat(room, x, y, maxDist){
+        var best = null, bd = Infinity;
+        for(var i = 0; i < SEATS.length; i++){
+          var s = SEATS[i];
+          if(s.room !== room || !seatFreeForMe(s)) continue;
+          var d = worldDist2(room, x, y, s.x, s.y);
+          if(d <= maxDist && d < bd){ bd = d; best = s; }
+        }
+        return best;
+      }
+      function cancelSeatWalk(){
+        if(me.seatTarget){
+          var t = me.seatTarget; me.seatTarget = null;
+          if(seatTakenBy[t.id] === "me") delete seatTakenBy[t.id];
+        }
+      }
       /* ---------------- 坐下 / 站起来 ---------------- */
       function updateSitBtn(){
         var b = $("#sitBtn"); if(!b) return;
         var label = b.querySelector("span:last-child");
         var ico = b.querySelector(".a-ico");
-        if(label) label.textContent = me.sitting ? "站起来" : "坐下";
+        if(label) label.textContent = me.sitting ? "站起来" : (me.seatTarget ? "别坐了" : "坐下");
         if(ico) ico.textContent = me.sitting ? "站" : "坐";
         b.classList.toggle("on", !!me.sitting);
       }
+      /* 点坐下：先找当前区域 8 米内最近的空椅子，走过去坐下；附近没空椅子才原地坐下 */
       function sitDown(){
-        if(me.sitting) return;
+        if(me.sitting || me.seatTarget) return;
+        var seat = findFreeSeat(me.room, me.x, me.y, 8);
+        if(seat){
+          me.seatTarget = seat;
+          seatTakenBy[seat.id] = "me";
+          me.tx = seat.x; me.ty = seat.y;
+          me.action = "坐下";
+          showBubble(me, "去坐下~", 2200);
+          netMove(true);
+          updateSitBtn(); renderRoster();
+          return;
+        }
+        sitInPlace();
+      }
+      function sitInPlace(){
         me.sitting = true; me.state = "sit";
         me.animClip = null; me.animUntil = 0;
         me.tx = me.x; me.ty = me.y; me.trip = null; me.moving = false;
@@ -7845,15 +8006,56 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         netTrack();
         updateSitBtn(); renderRoster();
       }
+      /* 走到椅子边了：椅子还在且空着就坐上去；被人抢了就就近再找一把，找不到就原地坐 */
+      function arriveAtSeat(){
+        var seat = me.seatTarget; if(!seat) return;
+        me.seatTarget = null;
+        if(seat.room !== me.room || !seatFreeForMe(seat)){
+          if(seatTakenBy[seat.id] === "me") delete seatTakenBy[seat.id];
+          var alt = findFreeSeat(me.room, me.x, me.y, 8);
+          if(alt){
+            me.seatTarget = alt;
+            seatTakenBy[alt.id] = "me";
+            me.tx = alt.x; me.ty = alt.y;
+            netMove(true);
+            return;
+          }
+          sitInPlace(); return;
+        }
+        me.x = seat.x; me.y = seat.y; me.tx = seat.x; me.ty = seat.y;
+        me.seatId = seat.id;
+        me.sitting = true; me.state = "sit";
+        me.animClip = null; me.animUntil = 0; me.moving = false;
+        me.face = seat.face;
+        me.action = "坐下";
+        showBubble(me, "坐下啦~", 2200);
+        netSend({ kind:"sit", sitting:true, seat:{ id:seat.id, room:seat.room, x:seat.x, y:seat.y, face:seat.face } });
+        netMove(false); netTrack();
+        updateSitBtn(); renderRoster();
+      }
       function standUp(){
+        cancelSeatWalk();
         if(!me.sitting) return;
+        var seat = me.seatId ? seatById(me.seatId) : null;
+        if(seat && seatTakenBy[seat.id] === "me") delete seatTakenBy[seat.id];
+        me.seatId = null;
         me.sitting = false; me.state = "idle";
         me.action = "站起来";
-        netSend({ kind:"sit", sitting:false });
+        if(seat){
+          /* 从椅子上站起来：走到椅子前方 1.5 米处，站在座位边上 */
+          var fx = Math.sin(seat.face), fz = Math.cos(seat.face);
+          me.tx = Math.min(100, Math.max(0, seat.x + fx * 1.5 / SPAN_X[seat.room] * 100));
+          me.ty = Math.min(95, Math.max(55, seat.y + fz * 1.5 / SPAN_Z[seat.room] * 40));
+        }
+        netSend({ kind:"sit", sitting:false, seat: seat ? { id:seat.id } : null });
         netTrack();
         updateSitBtn(); renderRoster();
       }
-      function toggleSit(){ if(me.sitting) standUp(); else sitDown(); }
+      function toggleSit(){
+        if(me.sitting) standUp();
+        else if(me.seatTarget) cancelSeatWalk();
+        else sitDown();
+      }
       function showBubble(m, text, ms, big){
         if(!m.p3 || !m.p3.bubble) return;
         var b = m.p3.bubble;
@@ -7914,6 +8116,12 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         if(m.trip && m.trip.room === m.room){
           var tdx = m.trip.x - m.x, tdy = m.trip.y - m.y;
           if(Math.sqrt(tdx * tdx + tdy * tdy) < 4){ m.trip = null; m.tx = m.x; m.ty = m.y; }
+        }
+        /* 真人走到椅子边了：坐上去（广播里带椅子号，别人就不会抢这把椅子） */
+        if(m.seatTarget && !m.moving){
+          var st = m.seatTarget; m.seatTarget = null;
+          m.sitting = true; m.state = "sit"; m.face = st.face; m.seatId = st.id;
+          m.animClip = null; m.animUntil = 0;
         }
         p.group.position.set(petWorldX(m), 0, petWorldZ(m));
         if(m.face != null){
@@ -8479,7 +8687,8 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
                   species: meta.species === "dog" ? "dog" : "cat",
                   coat: meta.coat || "orange", pattern:"plain",
                   room: ROOMS[meta.room] ? meta.room : "classroom",
-                  action: meta.action || "刚入学", state:"idle",
+                  action: meta.action || "刚入学", state:"idle", sitting:false,
+                  seatId:null, seatTarget:null,
                   x: +meta.x || 50, y: +meta.y || 76, tx: +meta.x || 50, ty: +meta.y || 76,
                   dir:1, face:Math.PI / 2, bubbleTimer:null, isMe:false, isRemote:true };
             remotes.push(r);
@@ -8500,6 +8709,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         for(var i = remotes.length - 1; i >= 0; i--){
           if(!seen[remotes[i].id]){
             feed("<b>" + escapeHtml(remotes[i].name) + "</b> 放学回家啦（真人同学）");
+            if(remotes[i].seatId && seatTakenBy[remotes[i].seatId] === remotes[i].id) delete seatTakenBy[remotes[i].seatId];
             removePet(remotes[i]);
             remotes.splice(i, 1);
             leftN++;
@@ -8516,7 +8726,11 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
           showBubble(r, String(p.text || (r.species === "cat" ? "喵~" : "汪汪！")).slice(0, 24), 2600, true);
         } else if(p.kind === "move"){
           r.lastNet = performance.now();
-          if(p.moving) r.sitting = false;
+          if(p.moving){
+            r.sitting = false;
+            if(r.seatId){ if(seatTakenBy[r.seatId] === p.from) delete seatTakenBy[r.seatId]; r.seatId = null; }
+            r.seatTarget = null; /* 走路了：之前走向椅子的目标作废，跟着广播位置走 */
+          }
           if(p.room && ROOMS[p.room] && r.room !== p.room){
             r.room = p.room;
             if(typeof p.x === "number" && typeof p.y === "number"){ r.x = p.x; r.y = p.y; }
@@ -8534,13 +8748,33 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
             updateCounts(); renderRoster();
           }
         } else if(p.kind === "sit"){
-          r.sitting = !!p.sitting;
-          r.action = p.sitting ? "坐下" : "站起来";
-          if(p.sitting){ r.tx = r.x; r.ty = r.y; r.animClip = null; r.animUntil = 0; }
+          if(p.sitting && p.seat && p.seat.id && seatById(p.seat.id)){
+            var s = seatById(p.seat.id);
+            seatTakenBy[s.id] = p.from;
+            /* 抢同一把椅子：名字小的留下，名字大的让座（两边按同一规则判，不会来回抢） */
+            if(s.id === me.seatId && me.sitting && r.name < me.name) standUp();
+            else if(me.seatTarget && s.id === me.seatTarget.id && r.name < me.name) cancelSeatWalk();
+            r.seatId = s.id;
+            r.seatTarget = s;
+            r.tx = s.x; r.ty = s.y;
+            if(r.room !== s.room){ r.room = s.room; placePet(r); }
+            r.action = "坐下";
+          } else if(p.sitting){
+            r.sitting = true; r.action = "坐下";
+            r.tx = r.x; r.ty = r.y; r.animClip = null; r.animUntil = 0;
+          } else {
+            if(r.seatId && seatTakenBy[r.seatId] === p.from) delete seatTakenBy[r.seatId];
+            if(p.seat && p.seat.id && seatTakenBy[p.seat.id] === p.from) delete seatTakenBy[p.seat.id];
+            r.sitting = false; r.seatId = null; r.seatTarget = null; r.action = "站起来";
+          }
           renderRoster();
         } else if(p.kind === "action"){
           if(p.label) r.action = String(p.label).slice(0, 12);
-          if(p.label) r.sitting = false;
+          if(p.label){
+            r.sitting = false;
+            if(r.seatId){ if(seatTakenBy[r.seatId] === p.from) delete seatTakenBy[r.seatId]; r.seatId = null; }
+            r.seatTarget = null;
+          }
           if(p.anim) playAnim(r, String(p.anim), 3200);
           if(typeof p.x === "number" && typeof p.y === "number") movePet(r, p.x, p.y);
           renderRoster();
@@ -8568,6 +8802,7 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
           setInterval(function(){
             remotes.forEach(function(r){
               if(r.lastNet && performance.now() - r.lastNet < 8000) return;
+              if(r.sitting || r.seatTarget) return;
               if(!r.moving && Math.random() < .35){
                 movePet(r, Math.min(90, Math.max(10, r.x + rand(-13, 13))),
                            Math.min(90, Math.max(58, r.y + rand(-6, 6))));
@@ -8592,7 +8827,8 @@ function addPrimitiveAttributes( geometry, primitiveDef, parser ) {
         classmates.forEach(renderPet);
         me.room = "classroom"; me.x = 50; me.y = 82; me.face = Math.PI;
         T3.camYaw = Math.PI; T3.camSnap = true;
-        me.sitting = false; me.state = "idle";
+        me.sitting = false; me.state = "idle"; me.seatId = null; me.seatTarget = null;
+        Object.keys(seatTakenBy).forEach(function(k){ if(seatTakenBy[k] === "me") delete seatTakenBy[k]; });
         renderPet(me);
         setRoomUI();
         renderCommonActions();
